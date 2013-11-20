@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.webosports.audio
+Exec=@WEBOS_INSTALL_SBINDIR@/audio-service
+Type=static
