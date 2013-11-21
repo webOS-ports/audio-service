@@ -1,0 +1,12 @@
+[Unit]
+Description=Service interface to control pulseaudio through a ls2 based API.
+Requires=ls-hubd_private.service ls-hubd_public.service
+After=ls-hubd_private.service ls-hubd_public.service pulseaudio.service
+
+[Service]
+Type=simple
+Restart=on-failure
+ExecStart=/usr/sbin/audio-service
+
+[Install]
+WantedBy=multi-user.target
