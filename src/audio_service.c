@@ -97,10 +97,15 @@ static void set_volume_success_cb(pa_context *context, int success, void *user_d
 {
 	struct luna_service_req_data *req = user_data;
 	struct audio_service *service = req->user_data;
+	jvalue_ref reply_obj = NULL;
 
 	service->volume = service->new_volume;
 
 	notify_status_subscribers(service);
+
+	reply_obj = jobject_create();
+	jobject_put(reply_obj, J_CSTR_TO_JVAL("returnValue"), jboolean_create(true));
+	luna_service_message_validate_and_send(req->handle, req->message, reply_obj);
 
 	luna_service_req_data_free(req);
 }
