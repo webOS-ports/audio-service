@@ -58,6 +58,11 @@ static bool get_status_cb(LSHandle *handle, LSMessage *message, void *user_data)
 	jvalue_ref reply_obj = NULL;
 	bool subscribed = false;
 
+	if (!service->context_initialized) {
+		luna_service_message_reply_custom_error(handle, message, "Not yet initialized");
+		return true;
+	}
+
 	subscribed = luna_service_check_for_subscription_and_process(handle, message);
 
 	reply_obj = jobject_create();
