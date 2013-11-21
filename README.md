@@ -37,6 +37,7 @@ telephonyd:
 * openwebos/pbnjson_c 1.3.0
 * openwebos/luna-service2 3.0.0
 * pkg-config 0.26
+* pulseaudio 4.0
 
 ## Building
 
