@@ -46,6 +46,10 @@ pkg_check_modules(PBNJSON_C REQUIRED pbnjson_c)
 include_directories(${PBNJSON_C_INCLUDE_DIRS})
 webos_add_compiler_flags(ALL ${PBNJSON_C_CFLAGS_OTHER})
 
+pkg_check_modules(LIBPULSE_MAINLOOP_GLIB libpulse-mainloop-glib)
+include_directories(${LIBPULSE_MAINLOOP_GLIB_INCLUDE_DIRS})
+webos_add_compiler_flags(ALL ${LIBPULSE_MAINLOOP_GLIB_CFLAGS_OTHER})
+
 file(GLOB SOURCE_FILES src/main.c src/audio_service.c src/luna_service_utils.c)
 
 webos_add_compiler_flags(ALL -Wall)
@@ -54,7 +58,8 @@ webos_add_linker_options(ALL --no-undefined)
 add_executable(audio-service ${SOURCE_FILES})
 target_link_libraries(audio-service
     ${GLIB2_LDFLAGS} ${LUNASERVICE2_LDFLAGS} ${PBNJSON_C_LDFLAGS}
-    ${GIO2_LDFLAGS} ${GIO-UNIX_LDFLAGS} ${GOBJECT2_LDFLAGS} rt pthread)
+    ${GIO2_LDFLAGS} ${GIO-UNIX_LDFLAGS} ${GOBJECT2_LDFLAGS}
+    ${LIBPULSE_MAINLOOP_GLIB_LDFLAGS} rt pthread)
 
 webos_build_daemon()
 webos_build_system_bus_files()
