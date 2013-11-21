@@ -22,17 +22,19 @@ void luna_service_message_reply_custom_error(LSHandle *handle, LSMessage *messag
 {
 	bool ret;
 	LSError lserror;
-	char payload[256];
+	char *payload;
 
 	LSErrorInit(&lserror);
 
-	snprintf(payload, 256, "{\"returnValue\":false, \"errorText\":\"%s\"}", error_text);
+	payload = g_strdup_printf("{\"returnValue\":false, \"errorText\":\"%s\"}", error_text);
 
 	ret = LSMessageReply(handle, message, payload, &lserror);
 	if (!ret) {
 		LSErrorPrint(&lserror, stderr);
 		LSErrorFree(&lserror);
 	}
+
+	g_free(payload);
 }
 
 void luna_service_message_reply_error_unknown(LSHandle *handle, LSMessage *message)
