@@ -9,11 +9,6 @@
             "service":"org.webosports.audio",
             "inbound":["*"],
             "outbound":["*"]
-        },
-        {
-            "service":"org.webosports.audio",
-            "inbound":["*"],
-            "outbound":["*"]
         }
     ]
 }
