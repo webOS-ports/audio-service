@@ -1,6 +1,6 @@
 [Unit]
 Description=Service interface to control pulseaudio through a ls2 based API.
-Requires=ls-hubd_private.service ls-hubd_public.service
+Requires=ls-hubd_private.service ls-hubd_public.service pulseaudio.service
 After=ls-hubd_private.service ls-hubd_public.service pulseaudio.service
 
 [Service]
