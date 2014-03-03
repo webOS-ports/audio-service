@@ -256,11 +256,12 @@ static void context_state_cb(pa_context *context, void *user_data)
 			service->context_initialized = true;
 			break;
 		case PA_CONTEXT_TERMINATED:
-			g_error("Connection of our context was terminated from pulseaudio");
+			g_warning("Connection of our context was terminated from pulseaudio");
 			break;
 		case PA_CONTEXT_FAILED:
+			g_warning("Failed to establish a connection to pulseaudio");
+			break;
 		default:
-			g_error("Failed to establish a connection to pulseaudio");
 			break;
 		}
 
@@ -269,8 +270,6 @@ static void context_state_cb(pa_context *context, void *user_data)
 			pa_context_subscribe(service->context, PA_SUBSCRIPTION_MASK_CARD, NULL, service);
 			update_properties(service);
 		}
-
-		return;
 	}
 }
 
@@ -288,26 +287,26 @@ struct audio_service* audio_service_create()
 	LSErrorInit(&error);
 
 	if (!LSRegisterPubPriv("org.webosports.audio", &service->handle, false, &error)) {
-		g_error("Failed to register the luna service: %s", error.message);
+		g_warning("Failed to register the luna service: %s", error.message);
 		LSErrorFree(&error);
 		goto error;
 	}
 
 	if (!LSRegisterCategory(service->handle, "/", audio_service_methods,
 			NULL, NULL, &error)) {
-		g_error("Could not register service category: %s", error.message);
+		g_warning("Could not register service category: %s", error.message);
 		LSErrorFree(&error);
 		goto error;
 	}
 
 	if (!LSCategorySetData(service->handle, "/", service, &error)) {
-		g_error("Could not set daa for service category: %s", error.message);
+		g_warning("Could not set daa for service category: %s", error.message);
 		LSErrorFree(&error);
 		goto error;
 	}
 
 	if (!LSGmainAttach(service->handle, event_loop, &error)) {
-		g_error("Could not attach service handle to mainloop: %s", error.message);
+		g_warning("Could not attach service handle to mainloop: %s", error.message);
 		LSErrorFree(&error);
 		goto error;
 	}
@@ -347,7 +346,7 @@ void audio_service_free(struct audio_service *service)
 	LSErrorInit(&error);
 
 	if (service->handle != NULL && LSUnregister(service->handle, &error) < 0) {
-		g_error("Could not unregister service: %s", error.message);
+		g_warning("Could not unregister service: %s", error.message);
 		LSErrorFree(&error);
 	}
 

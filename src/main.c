@@ -178,12 +178,16 @@ int main(int argc, char **argv)
 	event_loop = g_main_loop_new(NULL, FALSE);
 
 	service = audio_service_create();
+	if (!service)
+		goto exit;
 
 	g_main_loop_run(event_loop);
 
+exit:
 	g_source_remove(signal);
 
-	audio_service_free(service);
+	if (service)
+		audio_service_free(service);
 
 	g_main_loop_unref(event_loop);
 
