@@ -94,6 +94,34 @@ jvalue_ref luna_service_message_parse_and_validate(const char *payload)
 	return parsed_obj;
 }
 
+bool luna_service_message_get_boolean(jvalue_ref parsed_obj, const char *name, bool default_value)
+{
+	jvalue_ref boolean_obj;
+	bool value;
+
+	if (!jobject_get_exists(parsed_obj, j_str_to_buffer(name, strlen(name)), &boolean_obj) ||
+		!jis_boolean(boolean_obj))
+		return default_value;
+
+	jboolean_get(boolean_obj, &value);
+
+	return value;
+}
+
+char* luna_service_message_get_string(jvalue_ref parsed_obj, const char *name, const char *default_value)
+{
+	jvalue_ref string_obj = NULL;
+	raw_buffer string_buf;
+
+	if (!jobject_get_exists(parsed_obj, j_str_to_buffer(name, strlen(name)), &string_obj) ||
+		!jis_string(string_obj))
+		return g_strdup(default_value);
+
+	string_buf = jstring_get(string_obj);
+
+	return g_strdup(string_buf.m_str);
+}
+
 bool luna_service_message_validate_and_send(LSHandle *handle, LSMessage *message, jvalue_ref reply_obj)
 {
 	jschema_ref response_schema = NULL;

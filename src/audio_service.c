@@ -21,6 +21,11 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #include <glib.h>
 #include <pbnjson.h>
 #include <luna-service2/lunaservice.h>
@@ -31,7 +36,10 @@
 #include "luna_service_utils.h"
 #include "utils.h"
 
+#define SAMPLE_PATH		"/usr/share/systemsounds"
+
 extern GMainLoop *event_loop;
+static GSList *sample_list = NULL;
 
 struct audio_service {
 	LSHandle *handle;
@@ -41,16 +49,220 @@ struct audio_service {
 	double volume;
 	double new_volume;
 	int mute;
+	char *default_sink_name;
+};
+
+struct play_feedback_data {
+	struct audio_service *service;
+	LSHandle *handle;
+	LSMessage *message;
+	char *name;
+	char *sink;
+	bool play;
+	pa_stream *sample_stream;
+	unsigned int sample_length;
+	unsigned int stream_written;
+	int fd;
 };
 
 static bool get_status_cb(LSHandle *handle, LSMessage *message, void *user_data);
 static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data);
+static bool play_feedback_cb(LSHandle *handle, LSMessage *message, void *user_data);
 
 static LSMethod audio_service_methods[]  = {
 	{ "getStatus", get_status_cb },
 	{ "setVolume", set_volume_cb },
+	{ "playFeedback", play_feedback_cb },
 	{ NULL, NULL }
 };
+
+static void play_feedback_data_free(struct play_feedback_data *pfd)
+{
+	if (pfd->fd > 0)
+		close(pfd->fd);
+
+	LSMessageUnref(pfd->message);
+
+	g_free(pfd->name);
+	g_free(pfd);
+}
+
+static void play_feedback_sample(struct play_feedback_data *pfd)
+{
+	pa_operation *op;
+	pa_proplist *proplist;
+	char *sink = pfd->sink;
+
+	if (!pfd->play) {
+		luna_service_message_reply_success(pfd->handle, pfd->message);
+		return;
+	}
+
+	if (!sink)
+		sink = pfd->service->default_sink_name;
+
+	if (!sink) {
+		luna_service_message_reply_custom_error(pfd->handle, pfd->message, "No sink found to play sample on");
+		return;
+	}
+
+	/* make sure we're running as event to enable ducking */
+	proplist = pa_proplist_new();
+	pa_proplist_setf(proplist, PA_PROP_MEDIA_ROLE, "event");
+
+	op = pa_context_play_sample_with_proplist(pfd->service->context, pfd->name, sink, PA_VOLUME_NORM, proplist, NULL, NULL);
+	if (op)
+		pa_operation_unref(op);
+
+	luna_service_message_reply_success(pfd->handle, pfd->message);
+}
+
+static void preload_stream_state_cb(pa_stream *stream, void *user_data)
+{
+	struct play_feedback_data *pfd = user_data;
+
+	switch (pa_stream_get_state(stream)) {
+	case PA_STREAM_CREATING:
+	case PA_STREAM_READY:
+		return;
+	case PA_STREAM_TERMINATED:
+		g_message("Successfully uploaded sample %s to pulseaudio", pfd->name);
+		sample_list = g_slist_append(sample_list, g_strdup(pfd->name));
+		play_feedback_sample(pfd);
+		play_feedback_data_free(pfd);
+		break;
+	case PA_STREAM_FAILED:
+	default:
+		g_warning("Failed to upload sample %s", pfd->name);
+		luna_service_message_reply_custom_error(pfd->handle, pfd->message,
+												"Failed to upload sample to pulseaudio");
+		play_feedback_data_free(pfd);
+		break;
+	}
+}
+
+static void preload_stream_write_cb(pa_stream *stream, size_t length, void *user_data)
+{
+	struct play_feedback_data *pfd = user_data;
+	void *buffer;
+	ssize_t bread;
+
+	buffer = pa_xmalloc(pfd->sample_length);
+
+	bread = read(pfd->fd, buffer, pfd->sample_length);
+	pfd->stream_written += bread;
+
+	pa_stream_write(stream, buffer, bread, pa_xfree, 0, PA_SEEK_RELATIVE);
+
+	if (pfd->stream_written == pfd->sample_length) {
+		pa_stream_set_write_callback(stream, NULL, NULL);
+		pa_stream_finish_upload(stream);
+	}
+}
+
+static bool preload_sample(struct audio_service *service, struct play_feedback_data *pfd)
+{
+	bool result = false;
+	struct stat st;
+	pa_sample_spec spec;
+	char *sample_path;
+
+	if (!pfd || !pfd->name)
+		return false;
+
+	if (g_slist_find(sample_list, pfd->name)) {
+		play_feedback_sample(pfd);
+		play_feedback_data_free(pfd);
+		return true;
+	}
+
+	sample_path = g_strdup_printf("%s/%s.wav", SAMPLE_PATH, pfd->name);
+
+	if (stat(sample_path, &st) != 0)
+		goto cleanup;
+
+	pfd->sample_length = st.st_size;
+
+	spec.format = PA_SAMPLE_S16LE;
+	spec.rate = 44100;
+	spec.channels = 1;
+
+	pfd->fd = open(sample_path, O_RDONLY);
+	if (pfd->fd < 0)
+		goto cleanup;
+
+	pfd->sample_stream = pa_stream_new(service->context, pfd->name, &spec, NULL);
+	if (!pfd->sample_stream)
+		goto cleanup;
+
+	pa_stream_set_state_callback(pfd->sample_stream, preload_stream_state_cb, pfd);
+	pa_stream_set_write_callback(pfd->sample_stream, preload_stream_write_cb, pfd);
+	pa_stream_connect_upload(pfd->sample_stream, pfd->sample_length);
+
+	result = true;
+
+cleanup:
+	g_free(sample_path);
+
+	return result;
+}
+
+static bool play_feedback_cb(LSHandle *handle, LSMessage *message, void *user_data)
+{
+	struct audio_service *service = user_data;
+	struct play_feedback_data *pfd;
+	const char *payload;
+	jvalue_ref parsed_obj;
+	char *name, *sink;
+	bool play;
+
+	if (!service->context_initialized) {
+		luna_service_message_reply_custom_error(handle, message, "Not yet initialized");
+		return true;
+	}
+
+	payload = LSMessageGetPayload(message);
+	parsed_obj = luna_service_message_parse_and_validate(payload);
+	if (jis_null(parsed_obj)) {
+		luna_service_message_reply_error_bad_json(handle, message);
+		goto cleanup;
+	}
+
+	name = luna_service_message_get_string(parsed_obj, "name", NULL);
+	if (!name) {
+		luna_service_message_reply_custom_error(handle, message, "Invalid parameters: name parameter is required");
+		goto cleanup;
+	}
+
+	play = luna_service_message_get_boolean(parsed_obj, "play", true);
+
+	sink = luna_service_message_get_string(parsed_obj, "sink", NULL);
+
+	pfd = g_new0(struct play_feedback_data, 1);
+	pfd->service = service;
+	pfd->handle = handle;
+	pfd->message = message;
+	pfd->name = name;
+	pfd->sink = sink;
+	pfd->play = play;
+
+	LSMessageRef(message);
+
+	if (!preload_sample(service, pfd)) {
+		luna_service_message_reply_custom_error(handle, message, "Could not preload sample");
+		LSMessageUnref(message);
+		g_free(pfd);
+		g_free(name);
+		g_free(sink);
+		goto cleanup;
+	}
+
+cleanup:
+	if (!jis_null(parsed_obj))
+		j_release(&parsed_obj);
+
+	return true;
+}
 
 static bool get_status_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
@@ -219,6 +431,9 @@ static void server_info_cb(pa_context *context, const pa_server_info *info, void
 	if (info == NULL)
 		return;
 
+	g_free(service->default_sink_name);
+	service->default_sink_name = g_strdup(info->default_sink_name);
+
 	pa_context_get_sink_info_by_name(service->context, info->default_sink_name, default_sink_info_cb, service);
 }
 
@@ -326,6 +541,8 @@ struct audio_service* audio_service_create()
 		goto error;
 	}
 
+	sample_list = g_slist_alloc();
+
 	return service;
 
 error:
@@ -350,6 +567,9 @@ void audio_service_free(struct audio_service *service)
 		LSErrorFree(&error);
 	}
 
+	g_slist_free_full(sample_list, g_free);
+
+	g_free(service->default_sink_name);
 	g_free(service);
 }
 
