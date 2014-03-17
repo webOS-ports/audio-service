@@ -46,10 +46,12 @@ struct audio_service {
 	pa_glib_mainloop *pa_mainloop;
 	pa_context *context;
 	bool context_initialized;
-	double volume;
-	double new_volume;
+	int volume;
+	int new_volume;
 	int mute;
+	int new_mute;
 	char *default_sink_name;
+	int default_sink_index;
 };
 
 struct play_feedback_data {
@@ -67,11 +69,13 @@ struct play_feedback_data {
 
 static bool get_status_cb(LSHandle *handle, LSMessage *message, void *user_data);
 static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data);
+static bool set_mute_cb(LSHandle *handle, LSMessage *message, void *user_data);
 static bool play_feedback_cb(LSHandle *handle, LSMessage *message, void *user_data);
 
 static LSMethod audio_service_methods[]  = {
 	{ "getStatus", get_status_cb },
 	{ "setVolume", set_volume_cb },
+	{ "setMute", set_mute_cb },
 	{ "playFeedback", play_feedback_cb },
 	{ NULL, NULL }
 };
@@ -314,47 +318,20 @@ static void set_volume_success_cb(pa_context *context, int success, void *user_d
 {
 	struct luna_service_req_data *req = user_data;
 	struct audio_service *service = req->user_data;
-	jvalue_ref reply_obj = NULL;
+
+	if (!success) {
+		luna_service_message_reply_custom_error(req->handle, req->message, "Could not mute/unmute default sink");
+		goto cleanup;
+	}
 
 	service->volume = service->new_volume;
 
 	notify_status_subscribers(service);
 
-	reply_obj = jobject_create();
-	jobject_put(reply_obj, J_CSTR_TO_JVAL("returnValue"), jboolean_create(true));
-	luna_service_message_validate_and_send(req->handle, req->message, reply_obj);
+	luna_service_message_reply_success(req->handle, req->message);
 
+cleanup:
 	luna_service_req_data_free(req);
-}
-
-static unsigned int convert_double_to_volume(double volume)
-{
-	double tmp = (double) (PA_VOLUME_NORM - PA_VOLUME_MUTED) * volume;
-	return (unsigned int) (tmp + PA_VOLUME_MUTED);
-}
-
-static void default_sink_info_for_set_volume_cb(pa_context *context, const pa_sink_info *info, int eol, void *user_data)
-{
-	struct luna_service_req_data *req = user_data;
-	struct audio_service *service = req->user_data;
-	pa_cvolume *cvol;
-
-	if (info == NULL)
-		return;
-
-	cvol = pa_cvolume_set((pa_cvolume*) &info->volume, 1, convert_double_to_volume(service->new_volume));
-	pa_context_set_sink_volume_by_index(service->context, info->index, cvol, set_volume_success_cb, req);
-}
-
-static void server_info_for_set_volume_cb(pa_context *context, const pa_server_info *info, void *user_data)
-{
-	struct luna_service_req_data *req = user_data;
-	struct audio_service *service = req->user_data;
-
-	if (info == NULL)
-		return;
-
-	pa_context_get_sink_info_by_name(service->context, info->default_sink_name, default_sink_info_for_set_volume_cb, req);
 }
 
 static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data)
@@ -363,6 +340,8 @@ static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data)
 	const char *payload;
 	jvalue_ref parsed_obj = NULL;
 	jvalue_ref volume_obj = NULL;
+	pa_cvolume volume;
+	pa_operation *op;
 	struct luna_service_req_data *req;
 
 	if (!service->context_initialized) {
@@ -383,7 +362,7 @@ static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data)
 		goto cleanup;
 	}
 
-	jnumber_get_f64(volume_obj, &service->new_volume);
+	jnumber_get_i32(volume_obj, &service->new_volume);
 
 	if (service->new_volume == service->volume) {
 		luna_service_message_reply_custom_error(handle, message,
@@ -394,7 +373,9 @@ static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data)
 	req = luna_service_req_data_new(handle, message);
 	req->user_data = service;
 
-	pa_context_get_server_info(service->context, server_info_for_set_volume_cb, req);
+	pa_cvolume_set(&volume, 1, (service->new_volume * (double) (PA_VOLUME_NORM / 100)));
+	op = pa_context_set_sink_volume_by_name(service->context, service->default_sink_name, &volume, set_volume_success_cb, req);
+	pa_operation_unref(op);
 
 cleanup:
 	if (!jis_null(parsed_obj))
@@ -403,10 +384,64 @@ cleanup:
 	return true;
 }
 
-static double convert_volume_to_double(unsigned int volume)
+static void set_mute_success_cb(pa_context *context, int success, void *user_data)
 {
-	double tmp = (double) (volume - PA_VOLUME_MUTED);
-	return tmp / (double) (PA_VOLUME_NORM - PA_VOLUME_MUTED);
+	struct luna_service_req_data *req = user_data;
+	struct audio_service *service = req->user_data;
+
+	if (!success) {
+		luna_service_message_reply_custom_error(req->handle, req->message, "Could not mute/unmute default sink");
+		goto cleanup;
+	}
+
+	service->mute = service->new_mute;
+
+	notify_status_subscribers(service);
+
+	luna_service_message_reply_success(req->handle, req->message);
+
+cleanup:
+	luna_service_req_data_free(req);
+}
+
+static bool set_mute_cb(LSHandle *handle, LSMessage *message, void *user_data)
+{
+	struct audio_service *service = user_data;
+	const char *payload;
+	jvalue_ref parsed_obj = NULL;
+	struct luna_service_req_data *req;
+	pa_operation *op;
+
+	if (!service->context_initialized) {
+		luna_service_message_reply_custom_error(handle, message, "Not yet initialized");
+		return true;
+	}
+
+	payload = LSMessageGetPayload(message);
+	parsed_obj = luna_service_message_parse_and_validate(payload);
+	if (jis_null(parsed_obj)) {
+		luna_service_message_reply_error_bad_json(handle, message);
+		goto cleanup;
+	}
+
+	service->new_mute = (int) luna_service_message_get_boolean(parsed_obj, "mute", (bool) service->mute);
+
+	if (service->new_mute == service->mute) {
+		luna_service_message_reply_success(handle, message);
+		goto cleanup;
+	}
+
+	req = luna_service_req_data_new(handle, message);
+	req->user_data = service;
+
+	op = pa_context_set_sink_mute_by_name(service->context, service->default_sink_name, service->new_mute, set_mute_success_cb, req);
+	pa_operation_unref(op);
+
+cleanup:
+	if (!jis_null(parsed_obj))
+		j_release(&parsed_obj);
+
+	return true;
 }
 
 static void default_sink_info_cb(pa_context *context, const pa_sink_info *info, int eol, void *user_data)
@@ -419,9 +454,11 @@ static void default_sink_info_cb(pa_context *context, const pa_sink_info *info, 
 	if (service->mute != info->mute)
 		service->mute = info->mute;
 
-	double current_volume = convert_volume_to_double(info->volume.values[0]);
+	int current_volume = (info->volume.values[0] / (PA_VOLUME_NORM / 100));
 	if (service->volume != current_volume)
 		service->volume = current_volume;
+
+	service->default_sink_index = info->index;
 }
 
 static void server_info_cb(pa_context *context, const pa_server_info *info, void *user_data)
