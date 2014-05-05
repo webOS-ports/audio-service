@@ -180,7 +180,7 @@ static bool preload_sample(struct audio_service *service, struct play_feedback_d
 		return true;
 	}
 
-	sample_path = g_strdup_printf("%s/%s.wav", SAMPLE_PATH, pfd->name);
+	sample_path = g_strdup_printf("%s/%s.pcm", SAMPLE_PATH, pfd->name);
 
 	if (stat(sample_path, &st) != 0)
 		goto cleanup;
