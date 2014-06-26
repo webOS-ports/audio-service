@@ -38,6 +38,8 @@
 
 #define SAMPLE_PATH		"/usr/share/systemsounds"
 
+#define VOLUME_STEP		10
+
 extern GMainLoop *event_loop;
 static GSList *sample_list = NULL;
 
@@ -71,12 +73,16 @@ static bool get_status_cb(LSHandle *handle, LSMessage *message, void *user_data)
 static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data);
 static bool set_mute_cb(LSHandle *handle, LSMessage *message, void *user_data);
 static bool play_feedback_cb(LSHandle *handle, LSMessage *message, void *user_data);
+static bool volume_up_cb(LSHandle *handle, LSMessage *message, void *user_data);
+static bool volume_down_cb(LSHandle *handle, LSMessage *message, void *user_data);
 
 static LSMethod audio_service_methods[]  = {
 	{ "getStatus", get_status_cb },
 	{ "setVolume", set_volume_cb },
 	{ "setMute", set_mute_cb },
 	{ "playFeedback", play_feedback_cb },
+	{ "volumeUp", volume_up_cb },
+	{ "volumeDown", volume_down_cb },
 	{ NULL, NULL }
 };
 
@@ -334,14 +340,81 @@ cleanup:
 	luna_service_req_data_free(req);
 }
 
+static void set_volume(struct audio_service *service, int new_volume, void *user_data)
+{
+	pa_cvolume volume;
+	pa_operation *op;
+
+	service->new_volume = new_volume;
+
+	pa_cvolume_set(&volume, 1, (service->new_volume * (double) (PA_VOLUME_NORM / 100)));
+	op = pa_context_set_sink_volume_by_name(service->context, service->default_sink_name, &volume, set_volume_success_cb, user_data);
+	pa_operation_unref(op);
+}
+
+static bool volume_up_cb(LSHandle *handle, LSMessage *message, void *user_data)
+{
+	struct audio_service *service = user_data;
+	struct luna_service_req_data *req;
+	int normalized_volume;
+
+	if (!service->context_initialized) {
+		luna_service_message_reply_custom_error(handle, message, "Not yet initialized");
+		return true;
+	}
+
+	normalized_volume = (service->volume / 10) * 10;
+	if (normalized_volume == 100)
+		goto done;
+
+	req = luna_service_req_data_new(handle, message);
+	req->user_data = service;
+
+	set_volume(service, normalized_volume + VOLUME_STEP, req);
+
+	return true;
+
+done:
+	luna_service_message_reply_success(message, handle);
+
+	return true;
+}
+
+static bool volume_down_cb(LSHandle *handle, LSMessage *message, void *user_data)
+{
+	struct audio_service *service = user_data;
+	struct luna_service_req_data *req;
+	int normalized_volume;
+
+	if (!service->context_initialized) {
+		luna_service_message_reply_custom_error(handle, message, "Not yet initialized");
+		return true;
+	}
+
+	normalized_volume = (service->volume / 10) * 10;
+	if (normalized_volume == 0)
+		goto done;
+
+	req = luna_service_req_data_new(handle, message);
+	req->user_data = service;
+
+	set_volume(service, normalized_volume - VOLUME_STEP, req);
+
+	return true;
+
+done:
+	luna_service_message_reply_success(message, handle);
+
+
+	return true;
+}
+
 static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
 	struct audio_service *service = user_data;
 	const char *payload;
 	jvalue_ref parsed_obj = NULL;
 	jvalue_ref volume_obj = NULL;
-	pa_cvolume volume;
-	pa_operation *op;
 	struct luna_service_req_data *req;
 
 	if (!service->context_initialized) {
@@ -373,9 +446,7 @@ static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data)
 	req = luna_service_req_data_new(handle, message);
 	req->user_data = service;
 
-	pa_cvolume_set(&volume, 1, (service->new_volume * (double) (PA_VOLUME_NORM / 100)));
-	op = pa_context_set_sink_volume_by_name(service->context, service->default_sink_name, &volume, set_volume_success_cb, req);
-	pa_operation_unref(op);
+	set_volume(service, service->new_volume, req);
 
 cleanup:
 	if (!jis_null(parsed_obj))
