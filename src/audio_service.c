@@ -54,6 +54,9 @@ struct audio_service {
 	int new_mute;
 	char *default_sink_name;
 	int default_sink_index;
+	bool in_call;
+	bool speaker_mode;
+	bool mic_mute;
 };
 
 struct play_feedback_data {
@@ -75,6 +78,8 @@ static bool set_mute_cb(LSHandle *handle, LSMessage *message, void *user_data);
 static bool play_feedback_cb(LSHandle *handle, LSMessage *message, void *user_data);
 static bool volume_up_cb(LSHandle *handle, LSMessage *message, void *user_data);
 static bool volume_down_cb(LSHandle *handle, LSMessage *message, void *user_data);
+static bool set_call_mode_cb(LSHandle *handle, LSMessage *message, void *user_data);
+static bool set_mic_mute_cb(LSHandle *handle, LSMessage *message, void *user_data);
 
 static LSMethod audio_service_methods[]  = {
 	{ "getStatus", get_status_cb },
@@ -83,6 +88,8 @@ static LSMethod audio_service_methods[]  = {
 	{ "playFeedback", play_feedback_cb },
 	{ "volumeUp", volume_up_cb },
 	{ "volumeDown", volume_down_cb },
+	{ "setCallMode", set_call_mode_cb },
+	{ "setMicMute", set_mic_mute_cb },
 	{ NULL, NULL }
 };
 
@@ -291,6 +298,9 @@ static bool get_status_cb(LSHandle *handle, LSMessage *message, void *user_data)
 
 	jobject_put(reply_obj, J_CSTR_TO_JVAL("volume"), jnumber_create_f64(service->volume));
 	jobject_put(reply_obj, J_CSTR_TO_JVAL("mute"), jboolean_create(service->mute));
+	jobject_put(reply_obj, J_CSTR_TO_JVAL("inCall"), jboolean_create(service->in_call));
+	jobject_put(reply_obj, J_CSTR_TO_JVAL("speakerMode"), jboolean_create(service->speaker_mode));
+	jobject_put(reply_obj, J_CSTR_TO_JVAL("micMute"), jboolean_create(service->mic_mute));
 	if (subscribed)
 		jobject_put(reply_obj, J_CSTR_TO_JVAL("subscribed"), jboolean_create(true));
 	jobject_put(reply_obj, J_CSTR_TO_JVAL("returnValue"), jboolean_create(true));
@@ -375,7 +385,7 @@ static bool volume_up_cb(LSHandle *handle, LSMessage *message, void *user_data)
 	return true;
 
 done:
-	luna_service_message_reply_success(message, handle);
+	luna_service_message_reply_success(handle, message);
 
 	return true;
 }
@@ -403,8 +413,7 @@ static bool volume_down_cb(LSHandle *handle, LSMessage *message, void *user_data
 	return true;
 
 done:
-	luna_service_message_reply_success(message, handle);
-
+	luna_service_message_reply_success(handle, message);
 
 	return true;
 }
@@ -506,6 +515,323 @@ static bool set_mute_cb(LSHandle *handle, LSMessage *message, void *user_data)
 	req->user_data = service;
 
 	op = pa_context_set_sink_mute_by_name(service->context, service->default_sink_name, service->new_mute, set_mute_success_cb, req);
+	pa_operation_unref(op);
+
+cleanup:
+	if (!jis_null(parsed_obj))
+		j_release(&parsed_obj);
+
+	return true;
+}
+
+static void finish_set_call_mode(bool success, void *user_data)
+{
+	struct luna_service_req_data *req = user_data;
+
+	if (success)
+		luna_service_message_reply_success(req->handle, req->message);
+	else
+		luna_service_message_reply_error_internal(req->handle, req->message);
+
+	luna_service_req_data_free(req);
+}
+
+static void cm_source_port_set_cb(pa_context *context, int success, void *user_data)
+{
+	finish_set_call_mode(true, user_data);
+}
+
+static void cm_sourceinfo_cb(pa_context *context, const pa_source_info *info, int is_last, void *user_data)
+{
+	struct luna_service_req_data *req = user_data;
+	struct audio_service *service = req->user_data;
+	pa_source_port_info *builtin_mic = NULL, *headset = NULL;
+	pa_source_port_info *preferred = NULL;
+	const char *name_to_set = NULL;
+	const char *value_to_set = NULL;
+	int i;
+	pa_operation *op;
+
+	if (info->monitor_of_sink != PA_INVALID_INDEX)
+		return;  /* Not the right source */
+
+	for (i = 0; i < info->n_ports; i++) {
+		if (!strcmp(info->ports[i]->name, "input-builtin_mic"))
+			builtin_mic = info->ports[i];
+		if (!strcmp(info->ports[i]->name, "input-wired_headset") &&
+				info->ports[i]->available != PA_PORT_AVAILABLE_NO)
+			headset = info->ports[i];
+	}
+
+	if (is_last && !builtin_mic) {
+		finish_set_call_mode(false, user_data);
+		return;
+	}
+
+	if (!builtin_mic)
+		return; /* Not the right source */
+
+	preferred = headset ? headset : builtin_mic;
+
+	if (preferred && preferred != info->active_port) {
+		name_to_set = info->name;
+		value_to_set = preferred->name;
+	}
+
+	if (!!info->mute != !!service->mic_mute)
+		name_to_set = info->name;
+
+	if (name_to_set) {
+		op = pa_context_set_source_port_by_name(service->context, name_to_set, value_to_set, cm_source_port_set_cb, req);
+		pa_operation_unref(op);
+	}
+	else {
+		finish_set_call_mode(false, req);
+	}
+}
+
+static void cm_sink_port_set_cb(pa_context *context, int success, void *user_data)
+{
+	pa_operation *op;
+	op = pa_context_get_source_info_list(context, cm_sourceinfo_cb, user_data);
+	pa_operation_unref(op);
+}
+
+static void cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info, int is_last, void *user_data)
+{
+	struct luna_service_req_data *req = user_data;
+	struct audio_service *service = req->user_data;
+	pa_sink_port_info *earpiece = NULL, *speaker = NULL, *headphones = NULL;
+	pa_sink_port_info *highest = NULL, *preferred = NULL;
+	pa_operation *op;
+	int i;
+
+	for (i = 0; i < info->n_ports; i++) {
+		if (!highest || info->ports[i]->priority > highest->priority) {
+			if (info->ports[i]->available != PA_PORT_AVAILABLE_NO)
+				highest = info->ports[i];
+		}
+		if (!strcmp(info->ports[i]->name, "output-earpiece"))
+			earpiece = info->ports[i];
+		if (!strcmp(info->ports[i]->name, "output-speaker"))
+			speaker = info->ports[i];
+		if (!strcmp(info->ports[i]->name, "output-wired_headset") &&
+				info->ports[i]->available != PA_PORT_AVAILABLE_NO)
+			headphones = info->ports[i];
+		if (!strcmp(info->ports[i]->name, "output-wired_headphone") &&
+				info->ports[i]->available != PA_PORT_AVAILABLE_NO)
+			headphones = info->ports[i];
+	}
+
+	if (is_last && !earpiece) {
+		finish_set_call_mode(false, user_data);
+		return;
+	}
+
+	if (!earpiece)
+		return; /* Not the right sink */
+
+	/* TODO: When on ringtone and headphones are plugged in, people want output
+	   through *both* headphones and speaker, but when on call with speaker mode,
+	   people want *just* speaker, not including headphones. */
+	if (service->speaker_mode)
+		preferred = speaker;
+	else if (service->in_call)
+		preferred = headphones ? headphones : earpiece;
+
+	if (!preferred)
+		preferred = highest;
+
+	if (preferred && preferred != info->active_port) {
+		op = pa_context_set_sink_port_by_name(service->context, info->name, preferred->name, cm_sink_port_set_cb, req);
+		pa_operation_unref(op);
+	}
+	else {
+		op = pa_context_get_source_info_list(context, cm_sourceinfo_cb, user_data);
+		pa_operation_unref(op);
+	}
+}
+
+static void cm_card_profile_set_cb(pa_context *context, int success, void *user_data)
+{
+	pa_operation *op;
+	op = pa_context_get_sink_info_list(context, cm_sinkinfo_cb, user_data);
+	pa_operation_unref(op);
+}
+
+static void cm_cardinfo_cb(pa_context *context, const pa_card_info *info, int is_last, void *user_data)
+{
+	struct luna_service_req_data *req = user_data;
+	struct audio_service *service = req->user_data;
+	pa_card_profile_info *voice_call = NULL, *highest = NULL;
+	const char *name_to_set = NULL;
+	const char *value_to_set = NULL;
+	pa_operation *op;
+	int i;
+
+	for (i = 0; i < info->n_profiles; i++) {
+		if (!highest || info->profiles[i].priority > highest->priority)
+			highest = &info->profiles[i];
+		if (!strcmp(info->profiles[i].name, "voicecall"))
+			voice_call = &info->profiles[i];
+	}
+
+	if (is_last && !voice_call) {
+		finish_set_call_mode(false, user_data);
+		return;
+	}
+
+	if (!voice_call)
+		return; /* Not the right card */
+
+	if (service->in_call && (voice_call != info->active_profile)) {
+		name_to_set = info->name;
+		value_to_set = voice_call->name;
+	}
+	else if (!service->in_call && (voice_call == info->active_profile)) {
+		name_to_set = info->name;
+		value_to_set = highest->name;
+	}
+
+	if (name_to_set) {
+		op = pa_context_set_card_profile_by_name(service->context, name_to_set, value_to_set,
+											cm_card_profile_set_cb, req);
+		pa_operation_unref(op);
+	}
+	else {
+		op = pa_context_get_sink_info_list(context, cm_sinkinfo_cb, user_data);
+		pa_operation_unref(op);
+	}
+}
+
+static bool set_call_mode_cb(LSHandle *handle, LSMessage *message, void *user_data)
+{
+	struct audio_service *service = user_data;
+	const char *payload;
+	jvalue_ref parsed_obj = NULL;
+	struct luna_service_req_data *req;
+	pa_operation *op;
+
+	if (!service->context_initialized) {
+		luna_service_message_reply_custom_error(handle, message, "Not yet initialized");
+		return true;
+	}
+
+	payload = LSMessageGetPayload(message);
+	parsed_obj = luna_service_message_parse_and_validate(payload);
+	if (jis_null(parsed_obj)) {
+		luna_service_message_reply_error_bad_json(handle, message);
+		goto cleanup;
+	}
+
+	service->in_call = luna_service_message_get_boolean(parsed_obj, "inCall", service->in_call);
+	service->speaker_mode = luna_service_message_get_boolean(parsed_obj, "speakerMode", service->in_call);
+
+	req = luna_service_req_data_new(handle, message);
+	req->user_data = service;
+
+	op = pa_context_get_card_info_list(service->context, cm_cardinfo_cb, req);
+	pa_operation_unref(op);
+
+cleanup:
+	if (!jis_null(parsed_obj))
+		j_release(&parsed_obj);
+
+	return true;
+}
+
+static void finish_set_mic_mute(bool success, void *user_data)
+{
+	struct luna_service_req_data *req = user_data;
+
+	if (success)
+		luna_service_message_reply_success(req->handle, req->message);
+	else
+		luna_service_message_reply_error_internal(req->handle, req->message);
+
+	luna_service_req_data_free(req);
+}
+
+static void mm_set_source_mute_cb(pa_context *context, int success, void *user_data)
+{
+	finish_set_mic_mute(true, user_data);
+}
+
+static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, int is_last, void *user_data)
+{
+	struct luna_service_req_data *req = user_data;
+	struct audio_service *service = req->user_data;
+	pa_source_port_info *builtin_mic = NULL, *headset = NULL;
+	pa_source_port_info *preferred = NULL;
+	const char *name_to_set = NULL;
+	const char *value_to_set = NULL;
+	int i;
+	pa_operation *op;
+
+	if (info->monitor_of_sink != PA_INVALID_INDEX)
+		return;  /* Not the right source */
+
+	for (i = 0; i < info->n_ports; i++) {
+		if (!strcmp(info->ports[i]->name, "input-builtin_mic"))
+			builtin_mic = info->ports[i];
+		if (!strcmp(info->ports[i]->name, "input-wired_headset") &&
+				info->ports[i]->available != PA_PORT_AVAILABLE_NO)
+			headset = info->ports[i];
+	}
+
+	if (is_last && !builtin_mic) {
+		finish_set_call_mode(false, user_data);
+		return;
+	}
+
+	if (!builtin_mic)
+		return; /* Not the right source */
+
+	preferred = headset ? headset : builtin_mic;
+
+	if (preferred && preferred != info->active_port) {
+		name_to_set = info->name;
+		value_to_set = preferred->name;
+	}
+
+	if (!!info->mute != !!service->mic_mute)
+		name_to_set = info->name;
+
+	if (name_to_set) {
+		op = pa_context_set_source_mute_by_name(service->context, name_to_set, value_to_set, mm_set_source_mute_cb, req);
+		pa_operation_unref(op);
+	}
+	else {
+		finish_set_mic_mute(false, req);
+	}
+}
+
+static bool set_mic_mute_cb(LSHandle *handle, LSMessage *message, void *user_data)
+{
+	struct audio_service *service = user_data;
+	const char *payload;
+	jvalue_ref parsed_obj = NULL;
+	struct luna_service_req_data *req;
+	pa_operation *op;
+
+	if (!service->context_initialized) {
+		luna_service_message_reply_custom_error(handle, message, "Not yet initialized");
+		return true;
+	}
+
+	payload = LSMessageGetPayload(message);
+	parsed_obj = luna_service_message_parse_and_validate(payload);
+	if (jis_null(parsed_obj)) {
+		luna_service_message_reply_error_bad_json(handle, message);
+		goto cleanup;
+	}
+
+	service->mic_mute = luna_service_message_get_boolean(parsed_obj, "micMute", service->mic_mute);
+
+	req = luna_service_req_data_new(handle, message);
+	req->user_data = service;
+
+	op = pa_context_get_source_info_list(service->context, mm_sourceinfo_cb, req);
 	pa_operation_unref(op);
 
 cleanup:
