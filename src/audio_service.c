@@ -425,6 +425,7 @@ static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data)
 	jvalue_ref parsed_obj = NULL;
 	jvalue_ref volume_obj = NULL;
 	struct luna_service_req_data *req;
+	int new_volume = 0;
 
 	if (!service->context_initialized) {
 		luna_service_message_reply_custom_error(handle, message, "Not yet initialized");
@@ -444,7 +445,12 @@ static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data)
 		goto cleanup;
 	}
 
-	jnumber_get_i32(volume_obj, &service->new_volume);
+	jnumber_get_i32(volume_obj, &new_volume);
+
+	if (new_volume < 0 || new_volume > 100) {
+		luna_service_message_reply_custom_error(handle, message, "Volume out of range. Must be in [0;100]");
+		goto cleanup;
+	}
 
 	if (service->new_volume == service->volume) {
 		luna_service_message_reply_custom_error(handle, message,
