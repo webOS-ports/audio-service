@@ -558,6 +558,11 @@ static void cm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 	int i;
 	pa_operation *op;
 
+	if (is_last) {
+		finish_set_call_mode(false, user_data);
+		return;
+	}
+
 	if (info->monitor_of_sink != PA_INVALID_INDEX)
 		return;  /* Not the right source */
 
@@ -569,13 +574,10 @@ static void cm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 			headset = info->ports[i];
 	}
 
-	if (is_last && !builtin_mic) {
+	if (!builtin_mic) {
 		finish_set_call_mode(false, user_data);
-		return;
-	}
-
-	if (!builtin_mic)
 		return; /* Not the right source */
+	}
 
 	preferred = headset ? headset : builtin_mic;
 
@@ -612,6 +614,11 @@ static void cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info, int is
 	pa_operation *op;
 	int i;
 
+	if (is_last) {
+		finish_set_call_mode(false, user_data);
+		return;
+	}
+
 	for (i = 0; i < info->n_ports; i++) {
 		if (!highest || info->ports[i]->priority > highest->priority) {
 			if (info->ports[i]->available != PA_PORT_AVAILABLE_NO)
@@ -629,13 +636,10 @@ static void cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info, int is
 			headphones = info->ports[i];
 	}
 
-	if (is_last && !earpiece) {
+	if (!earpiece) {
 		finish_set_call_mode(false, user_data);
-		return;
-	}
-
-	if (!earpiece)
 		return; /* Not the right sink */
+	}
 
 	/* TODO: When on ringtone and headphones are plugged in, people want output
 	   through *both* headphones and speaker, but when on call with speaker mode,
@@ -675,6 +679,11 @@ static void cm_cardinfo_cb(pa_context *context, const pa_card_info *info, int is
 	pa_operation *op;
 	int i;
 
+	if (is_last) {
+		finish_set_call_mode(false, user_data);
+		return;
+	}
+
 	for (i = 0; i < info->n_profiles; i++) {
 		if (!highest || info->profiles[i].priority > highest->priority)
 			highest = &info->profiles[i];
@@ -682,13 +691,10 @@ static void cm_cardinfo_cb(pa_context *context, const pa_card_info *info, int is
 			voice_call = &info->profiles[i];
 	}
 
-	if (is_last && !voice_call) {
+	if (!voice_call) {
 		finish_set_call_mode(false, user_data);
-		return;
-	}
-
-	if (!voice_call)
 		return; /* Not the right card */
+	}
 
 	if (service->in_call && (voice_call != info->active_profile)) {
 		name_to_set = info->name;
@@ -774,6 +780,11 @@ static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 	int i;
 	pa_operation *op;
 
+	if (is_last) {
+		finish_set_mic_mute(false, user_data);
+		return;
+	}
+
 	if (info->monitor_of_sink != PA_INVALID_INDEX)
 		return;  /* Not the right source */
 
@@ -785,13 +796,10 @@ static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 			headset = info->ports[i];
 	}
 
-	if (is_last && !builtin_mic) {
-		finish_set_call_mode(false, user_data);
-		return;
-	}
-
-	if (!builtin_mic)
+	if (!builtin_mic) {
+		finish_set_mic_mute(false, user_data);
 		return; /* Not the right source */
+	}
 
 	preferred = headset ? headset : builtin_mic;
 
