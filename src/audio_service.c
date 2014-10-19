@@ -557,9 +557,12 @@ static void cm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 	const char *value_to_set = NULL;
 	int i;
 	pa_operation *op;
+	static bool needreply = true;
 
 	if (is_last) {
-		finish_set_call_mode(false, user_data);
+		if (needreply)
+			finish_set_call_mode(false, user_data);
+		needreply = true;
 		return;
 	}
 
@@ -574,10 +577,8 @@ static void cm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 			headset = info->ports[i];
 	}
 
-	if (!builtin_mic) {
-		finish_set_call_mode(false, user_data);
+	if (!builtin_mic)
 		return; /* Not the right source */
-	}
 
 	preferred = headset ? headset : builtin_mic;
 
@@ -596,6 +597,7 @@ static void cm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 	else {
 		finish_set_call_mode(false, req);
 	}
+	needreply = false;
 }
 
 static void cm_sink_port_set_cb(pa_context *context, int success, void *user_data)
@@ -613,9 +615,12 @@ static void cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info, int is
 	pa_sink_port_info *highest = NULL, *preferred = NULL;
 	pa_operation *op;
 	int i;
+	static bool needreply = true;
 
 	if (is_last) {
-		finish_set_call_mode(false, user_data);
+		if (needreply)
+			finish_set_call_mode(false, user_data);
+		needreply = true;
 		return;
 	}
 
@@ -636,10 +641,8 @@ static void cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info, int is
 			headphones = info->ports[i];
 	}
 
-	if (!earpiece) {
-		finish_set_call_mode(false, user_data);
+	if (!earpiece)
 		return; /* Not the right sink */
-	}
 
 	/* TODO: When on ringtone and headphones are plugged in, people want output
 	   through *both* headphones and speaker, but when on call with speaker mode,
@@ -660,6 +663,7 @@ static void cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info, int is
 		op = pa_context_get_source_info_list(context, cm_sourceinfo_cb, user_data);
 		pa_operation_unref(op);
 	}
+	needreply = false;
 }
 
 static void cm_card_profile_set_cb(pa_context *context, int success, void *user_data)
@@ -678,9 +682,12 @@ static void cm_cardinfo_cb(pa_context *context, const pa_card_info *info, int is
 	const char *value_to_set = NULL;
 	pa_operation *op;
 	int i;
+	static bool needreply = true;
 
 	if (is_last) {
-		finish_set_call_mode(false, user_data);
+		if (needreply)
+			finish_set_call_mode(false, user_data);
+		needreply = true;
 		return;
 	}
 
@@ -691,10 +698,8 @@ static void cm_cardinfo_cb(pa_context *context, const pa_card_info *info, int is
 			voice_call = &info->profiles[i];
 	}
 
-	if (!voice_call) {
-		finish_set_call_mode(false, user_data);
+	if (!voice_call)
 		return; /* Not the right card */
-	}
 
 	if (service->in_call && (voice_call != info->active_profile)) {
 		name_to_set = info->name;
@@ -714,6 +719,7 @@ static void cm_cardinfo_cb(pa_context *context, const pa_card_info *info, int is
 		op = pa_context_get_sink_info_list(context, cm_sinkinfo_cb, user_data);
 		pa_operation_unref(op);
 	}
+	needreply = false;
 }
 
 static bool set_call_mode_cb(LSHandle *handle, LSMessage *message, void *user_data)
@@ -779,9 +785,12 @@ static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 	const char *value_to_set = NULL;
 	int i;
 	pa_operation *op;
+	static bool needreply = true;
 
 	if (is_last) {
-		finish_set_mic_mute(false, user_data);
+		if (needreply)
+			finish_set_mic_mute(false, user_data);
+		needreply = true;
 		return;
 	}
 
@@ -796,10 +805,8 @@ static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 			headset = info->ports[i];
 	}
 
-	if (!builtin_mic) {
-		finish_set_mic_mute(false, user_data);
+	if (!builtin_mic)
 		return; /* Not the right source */
-	}
 
 	preferred = headset ? headset : builtin_mic;
 
@@ -818,6 +825,7 @@ static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 	else {
 		finish_set_mic_mute(false, req);
 	}
+	needreply = false;
 }
 
 static bool set_mic_mute_cb(LSHandle *handle, LSMessage *message, void *user_data)
