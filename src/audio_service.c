@@ -557,6 +557,14 @@ static void cm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 	const char *value_to_set = NULL;
 	int i;
 	pa_operation *op;
+	static bool needreply = true;
+
+	if (is_last) {
+		if (needreply)
+			finish_set_call_mode(false, user_data);
+		needreply = true;
+		return;
+	}
 
 	if (info->monitor_of_sink != PA_INVALID_INDEX)
 		return;  /* Not the right source */
@@ -567,11 +575,6 @@ static void cm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 		if (!strcmp(info->ports[i]->name, "input-wired_headset") &&
 				info->ports[i]->available != PA_PORT_AVAILABLE_NO)
 			headset = info->ports[i];
-	}
-
-	if (is_last && !builtin_mic) {
-		finish_set_call_mode(false, user_data);
-		return;
 	}
 
 	if (!builtin_mic)
@@ -594,6 +597,7 @@ static void cm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 	else {
 		finish_set_call_mode(false, req);
 	}
+	needreply = false;
 }
 
 static void cm_sink_port_set_cb(pa_context *context, int success, void *user_data)
@@ -611,6 +615,14 @@ static void cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info, int is
 	pa_sink_port_info *highest = NULL, *preferred = NULL;
 	pa_operation *op;
 	int i;
+	static bool needreply = true;
+
+	if (is_last) {
+		if (needreply)
+			finish_set_call_mode(false, user_data);
+		needreply = true;
+		return;
+	}
 
 	for (i = 0; i < info->n_ports; i++) {
 		if (!highest || info->ports[i]->priority > highest->priority) {
@@ -627,11 +639,6 @@ static void cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info, int is
 		if (!strcmp(info->ports[i]->name, "output-wired_headphone") &&
 				info->ports[i]->available != PA_PORT_AVAILABLE_NO)
 			headphones = info->ports[i];
-	}
-
-	if (is_last && !earpiece) {
-		finish_set_call_mode(false, user_data);
-		return;
 	}
 
 	if (!earpiece)
@@ -656,6 +663,7 @@ static void cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info, int is
 		op = pa_context_get_source_info_list(context, cm_sourceinfo_cb, user_data);
 		pa_operation_unref(op);
 	}
+	needreply = false;
 }
 
 static void cm_card_profile_set_cb(pa_context *context, int success, void *user_data)
@@ -674,17 +682,20 @@ static void cm_cardinfo_cb(pa_context *context, const pa_card_info *info, int is
 	const char *value_to_set = NULL;
 	pa_operation *op;
 	int i;
+	static bool needreply = true;
+
+	if (is_last) {
+		if (needreply)
+			finish_set_call_mode(false, user_data);
+		needreply = true;
+		return;
+	}
 
 	for (i = 0; i < info->n_profiles; i++) {
 		if (!highest || info->profiles[i].priority > highest->priority)
 			highest = &info->profiles[i];
 		if (!strcmp(info->profiles[i].name, "voicecall"))
 			voice_call = &info->profiles[i];
-	}
-
-	if (is_last && !voice_call) {
-		finish_set_call_mode(false, user_data);
-		return;
 	}
 
 	if (!voice_call)
@@ -708,6 +719,7 @@ static void cm_cardinfo_cb(pa_context *context, const pa_card_info *info, int is
 		op = pa_context_get_sink_info_list(context, cm_sinkinfo_cb, user_data);
 		pa_operation_unref(op);
 	}
+	needreply = false;
 }
 
 static bool set_call_mode_cb(LSHandle *handle, LSMessage *message, void *user_data)
@@ -773,6 +785,14 @@ static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 	const char *value_to_set = NULL;
 	int i;
 	pa_operation *op;
+	static bool needreply = true;
+
+	if (is_last) {
+		if (needreply)
+			finish_set_mic_mute(false, user_data);
+		needreply = true;
+		return;
+	}
 
 	if (info->monitor_of_sink != PA_INVALID_INDEX)
 		return;  /* Not the right source */
@@ -783,11 +803,6 @@ static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 		if (!strcmp(info->ports[i]->name, "input-wired_headset") &&
 				info->ports[i]->available != PA_PORT_AVAILABLE_NO)
 			headset = info->ports[i];
-	}
-
-	if (is_last && !builtin_mic) {
-		finish_set_call_mode(false, user_data);
-		return;
 	}
 
 	if (!builtin_mic)
@@ -810,6 +825,7 @@ static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 	else {
 		finish_set_mic_mute(false, req);
 	}
+	needreply = false;
 }
 
 static bool set_mic_mute_cb(LSHandle *handle, LSMessage *message, void *user_data)
