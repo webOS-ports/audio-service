@@ -38,7 +38,7 @@
 
 #define SAMPLE_PATH		"/usr/share/systemsounds"
 
-#define VOLUME_STEP		10
+#define VOLUME_STEP		11
 
 extern GMainLoop *event_loop;
 static GSList *sample_list = NULL;
@@ -373,7 +373,9 @@ static bool volume_up_cb(LSHandle *handle, LSMessage *message, void *user_data)
 		return true;
 	}
 
-	normalized_volume = (service->volume / 10) * 10;
+	normalized_volume = (service->volume / VOLUME_STEP) * VOLUME_STEP % 100;
+	if (normalized_volume >= 88) /* because VOLUME_STEP is 11, this adjustment is needed to get from 88 to 100 */
+		++normalized_volume;
 	if (normalized_volume == 100)
 		goto done;
 
@@ -401,7 +403,7 @@ static bool volume_down_cb(LSHandle *handle, LSMessage *message, void *user_data
 		return true;
 	}
 
-	normalized_volume = (service->volume / 10) * 10;
+	normalized_volume = (service->volume / VOLUME_STEP) * VOLUME_STEP % 100;
 	if (normalized_volume == 0)
 		goto done;
 
