@@ -38,5 +38,3 @@ bool luna_service_message_get_boolean(jvalue_ref parsed_obj, const char *name, b
 char* luna_service_message_get_string(jvalue_ref parsed_obj, const char *name, const char *default_value);
 
 #endif
-
-// vim:ts=4:sw=4:noexpandtab

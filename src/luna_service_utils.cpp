@@ -186,5 +186,3 @@ cleanup:
 	if (response_schema)
 		jschema_release(&response_schema);
 }
-
-// vim:ts=4:sw=4:noexpandtab
