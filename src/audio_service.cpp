@@ -136,7 +136,7 @@ static void play_feedback_sample(struct play_feedback_data *pfd)
 
 static void preload_stream_state_cb(pa_stream *stream, void *user_data)
 {
-	struct play_feedback_data *pfd = user_data;
+	struct play_feedback_data *pfd = (struct play_feedback_data*) user_data;
 
 	switch (pa_stream_get_state(stream)) {
 	case PA_STREAM_CREATING:
@@ -160,7 +160,7 @@ static void preload_stream_state_cb(pa_stream *stream, void *user_data)
 
 static void preload_stream_write_cb(pa_stream *stream, size_t length, void *user_data)
 {
-	struct play_feedback_data *pfd = user_data;
+	struct play_feedback_data *pfd = (struct play_feedback_data*) user_data;
 	void *buffer;
 	ssize_t bread;
 
@@ -226,7 +226,7 @@ cleanup:
 
 static bool play_feedback_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 	struct play_feedback_data *pfd;
 	const char *payload;
 	jvalue_ref parsed_obj;
@@ -283,7 +283,7 @@ cleanup:
 
 static bool get_status_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 	jvalue_ref reply_obj = NULL;
 	bool subscribed = false;
 
@@ -332,8 +332,8 @@ static void notify_status_subscribers(struct audio_service *service)
 
 static void set_volume_success_cb(pa_context *context, int success, void *user_data)
 {
-	struct luna_service_req_data *req = user_data;
-	struct audio_service *service = req->user_data;
+	struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
+	struct audio_service *service = (struct audio_service*) req->user_data;
 
 	if (!success) {
 		luna_service_message_reply_custom_error(req->handle, req->message, "Could not mute/unmute default sink");
@@ -364,7 +364,7 @@ static void set_volume(struct audio_service *service, int new_volume, void *user
 
 static bool volume_up_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 	struct luna_service_req_data *req;
 	int normalized_volume;
 
@@ -395,7 +395,7 @@ done:
 
 static bool volume_down_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 	struct luna_service_req_data *req;
 	int normalized_volume;
 
@@ -425,7 +425,7 @@ done:
 
 static bool set_volume_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 	const char *payload;
 	jvalue_ref parsed_obj = NULL;
 	jvalue_ref volume_obj = NULL;
@@ -477,8 +477,8 @@ cleanup:
 
 static void set_mute_success_cb(pa_context *context, int success, void *user_data)
 {
-	struct luna_service_req_data *req = user_data;
-	struct audio_service *service = req->user_data;
+	struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
+	struct audio_service *service = (struct audio_service*) req->user_data;
 
 	if (!success) {
 		luna_service_message_reply_custom_error(req->handle, req->message, "Could not mute/unmute default sink");
@@ -497,7 +497,7 @@ cleanup:
 
 static bool set_mute_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 	const char *payload;
 	jvalue_ref parsed_obj = NULL;
 	struct luna_service_req_data *req;
@@ -537,7 +537,7 @@ cleanup:
 
 static void finish_set_call_mode(bool success, void *user_data)
 {
-	struct luna_service_req_data *req = user_data;
+	struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
 
 	if (success)
 		luna_service_message_reply_success(req->handle, req->message);
@@ -554,13 +554,13 @@ static void cm_source_port_set_cb(pa_context *context, int success, void *user_d
 
 static void cm_sourceinfo_cb(pa_context *context, const pa_source_info *info, int is_last, void *user_data)
 {
-	struct luna_service_req_data *req = user_data;
-	struct audio_service *service = req->user_data;
+	struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
+	struct audio_service *service = (struct audio_service*) req->user_data;
 	pa_source_port_info *builtin_mic = NULL, *headset = NULL;
 	pa_source_port_info *preferred = NULL;
 	const char *name_to_set = NULL;
 	const char *value_to_set = NULL;
-	int i;
+	unsigned int i;
 	pa_operation *op;
 	static bool needreply = true;
 
@@ -614,12 +614,12 @@ static void cm_sink_port_set_cb(pa_context *context, int success, void *user_dat
 
 static void cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info, int is_last, void *user_data)
 {
-	struct luna_service_req_data *req = user_data;
-	struct audio_service *service = req->user_data;
+	struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
+	struct audio_service *service = (struct audio_service*) req->user_data;
 	pa_sink_port_info *earpiece = NULL, *speaker = NULL, *headphones = NULL;
 	pa_sink_port_info *highest = NULL, *preferred = NULL;
 	pa_operation *op;
-	int i;
+	unsigned int i;
 	static bool needreply = true;
 
 	if (is_last) {
@@ -680,13 +680,13 @@ static void cm_card_profile_set_cb(pa_context *context, int success, void *user_
 
 static void cm_cardinfo_cb(pa_context *context, const pa_card_info *info, int is_last, void *user_data)
 {
-	struct luna_service_req_data *req = user_data;
-	struct audio_service *service = req->user_data;
+	struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
+	struct audio_service *service = (struct audio_service*) req->user_data;
 	pa_card_profile_info *voice_call = NULL, *highest = NULL;
 	const char *name_to_set = NULL;
 	const char *value_to_set = NULL;
 	pa_operation *op;
-	int i;
+	unsigned int i;
 	static bool needreply = true;
 
 	if (is_last) {
@@ -729,7 +729,7 @@ static void cm_cardinfo_cb(pa_context *context, const pa_card_info *info, int is
 
 static bool set_call_mode_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 	const char *payload;
 	jvalue_ref parsed_obj = NULL;
 	struct luna_service_req_data *req;
@@ -765,7 +765,7 @@ cleanup:
 
 static void finish_set_mic_mute(bool success, void *user_data)
 {
-	struct luna_service_req_data *req = user_data;
+	struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
 
 	if (success)
 		luna_service_message_reply_success(req->handle, req->message);
@@ -782,13 +782,12 @@ static void mm_set_source_mute_cb(pa_context *context, int success, void *user_d
 
 static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, int is_last, void *user_data)
 {
-	struct luna_service_req_data *req = user_data;
-	struct audio_service *service = req->user_data;
+	struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
+	struct audio_service *service = (struct audio_service*) req->user_data;
 	pa_source_port_info *builtin_mic = NULL, *headset = NULL;
 	pa_source_port_info *preferred = NULL;
 	const char *name_to_set = NULL;
-	const char *value_to_set = NULL;
-	int i;
+	unsigned int i;
 	pa_operation *op;
 	static bool needreply = true;
 
@@ -815,16 +814,14 @@ static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 
 	preferred = headset ? headset : builtin_mic;
 
-	if (preferred && preferred != info->active_port) {
+	if (preferred && preferred != info->active_port)
 		name_to_set = info->name;
-		value_to_set = preferred->name;
-	}
 
 	if (!!info->mute != !!service->mic_mute)
 		name_to_set = info->name;
 
 	if (name_to_set) {
-		op = pa_context_set_source_mute_by_name(service->context, name_to_set, value_to_set, mm_set_source_mute_cb, req);
+		op = pa_context_set_source_mute_by_name(service->context, name_to_set, service->mic_mute, mm_set_source_mute_cb, req);
 		pa_operation_unref(op);
 	}
 	else {
@@ -835,7 +832,7 @@ static void mm_sourceinfo_cb(pa_context *context, const pa_source_info *info, in
 
 static bool set_mic_mute_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 	const char *payload;
 	jvalue_ref parsed_obj = NULL;
 	struct luna_service_req_data *req;
@@ -870,7 +867,7 @@ cleanup:
 
 static void default_sink_info_cb(pa_context *context, const pa_sink_info *info, int eol, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 
 	if (info == NULL)
 		return;
@@ -887,7 +884,7 @@ static void default_sink_info_cb(pa_context *context, const pa_sink_info *info, 
 
 static void server_info_cb(pa_context *context, const pa_server_info *info, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 
 	if (info == NULL)
 		return;
@@ -905,7 +902,7 @@ static void update_properties(struct audio_service *service)
 
 static void context_subscribe_cb(pa_context *context, pa_subscription_event_type_t type, uint32_t idx, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 
 	if ((type & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_CARD &&
 		(type & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_CHANGE) {
@@ -919,7 +916,7 @@ static void context_subscribe_cb(pa_context *context, pa_subscription_event_type
 
 static void context_state_cb(pa_context *context, void *user_data)
 {
-	struct audio_service *service = user_data;
+	struct audio_service *service = (struct audio_service*) user_data;
 
 	if (!service->context_initialized) {
 		switch (pa_context_get_state(service->context)) {
@@ -995,7 +992,7 @@ struct audio_service* audio_service_create()
 	service->context_initialized = false;
 	pa_context_set_state_callback(service->context, context_state_cb, service);
 
-	if (pa_context_connect(service->context, NULL, 0, NULL) < 0) {
+	if (pa_context_connect(service->context, NULL, (pa_context_flags_t) 0, NULL) < 0) {
 		g_warning("Failed to connect to PulseAudio");
 		pa_context_unref(service->context);
 		pa_glib_mainloop_free(service->pa_mainloop);

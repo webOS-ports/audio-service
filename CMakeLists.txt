@@ -18,7 +18,7 @@
 
 cmake_minimum_required(VERSION 2.8.7)
 
-project(audio-service C)
+project(audio-service CXX)
 
 include(webOS/webOS)
 webos_modules_init(1 0 0 QUALIFIER RC2)
@@ -50,7 +50,10 @@ pkg_check_modules(LIBPULSE_MAINLOOP_GLIB libpulse-mainloop-glib)
 include_directories(${LIBPULSE_MAINLOOP_GLIB_INCLUDE_DIRS})
 webos_add_compiler_flags(ALL ${LIBPULSE_MAINLOOP_GLIB_CFLAGS_OTHER})
 
-file(GLOB SOURCE_FILES src/main.c src/audio_service.c src/luna_service_utils.c)
+file(GLOB SOURCE_FILES
+    src/main.cpp
+    src/audio_service.cpp
+    src/luna_service_utils.cpp)
 
 webos_add_compiler_flags(ALL -Wall)
 webos_add_linker_options(ALL --no-undefined)

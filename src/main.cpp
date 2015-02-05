@@ -120,7 +120,7 @@ static guint setup_signalfd(void)
 	g_io_channel_set_buffered(channel, FALSE);
 
 	source = g_io_add_watch(channel,
-				G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
+				(GIOCondition) (G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL),
 				signal_handler, NULL);
 
 	g_io_channel_unref(channel);
