@@ -33,6 +33,8 @@
 #include <pulse/glib-mainloop.h>
 
 #include "audio_service.h"
+#include "feedbackeffect.h"
+
 #include "luna_service_utils.h"
 #include "utils.h"
 
@@ -41,7 +43,6 @@
 #define VOLUME_STEP		11
 
 extern GMainLoop *event_loop;
-static GSList *sample_list = NULL;
 
 struct play_feedback_data {
     AudioService *service;
@@ -105,18 +106,16 @@ AudioService::AudioService()
     mainloop_api = pa_glib_mainloop_get_api(pa_mainloop);
 
     snprintf(name, 100, "AudioServiceContext:%i", getpid());
-    context = pa_context_new(mainloop_api, name);
+    mContext = pa_context_new(mainloop_api, name);
     context_initialized = false;
-    pa_context_set_state_callback(context, context_state_cb, this);
+    pa_context_set_state_callback(mContext, context_state_cb, this);
 
-    if (pa_context_connect(context, NULL, (pa_context_flags_t) 0, NULL) < 0) {
+    if (pa_context_connect(mContext, NULL, (pa_context_flags_t) 0, NULL) < 0) {
         g_warning("Failed to connect to PulseAudio");
-        pa_context_unref(context);
+        pa_context_unref(mContext);
         pa_glib_mainloop_free(pa_mainloop);
         goto error;
     }
-
-    sample_list = g_slist_alloc();
 
     return;
 
@@ -138,140 +137,7 @@ AudioService::~AudioService()
         LSErrorFree(&error);
     }
 
-    g_slist_free_full(sample_list, g_free);
-
-    g_free(default_sink_name);
-}
-
-void AudioService::play_feedback_data_free(struct play_feedback_data *pfd)
-{
-    if (pfd->fd > 0)
-        close(pfd->fd);
-
-    LSMessageUnref(pfd->message);
-
-    g_free(pfd->name);
-    g_free(pfd);
-}
-
-void AudioService::play_feedback_sample(struct play_feedback_data *pfd)
-{
-    pa_operation *op;
-    pa_proplist *proplist;
-    char *sink = pfd->sink;
-
-    if (!pfd->play) {
-        luna_service_message_reply_success(pfd->handle, pfd->message);
-        return;
-    }
-
-    if (!sink)
-        sink = pfd->service->default_sink_name;
-
-    if (!sink) {
-        luna_service_message_reply_custom_error(pfd->handle, pfd->message, "No sink found to play sample on");
-        return;
-    }
-
-    /* make sure we're running as event to enable ducking */
-    proplist = pa_proplist_new();
-    pa_proplist_setf(proplist, PA_PROP_MEDIA_ROLE, "event");
-
-    op = pa_context_play_sample_with_proplist(pfd->service->context, pfd->name, sink, PA_VOLUME_NORM, proplist, NULL, NULL);
-    if (op)
-        pa_operation_unref(op);
-
-    luna_service_message_reply_success(pfd->handle, pfd->message);
-}
-
-void AudioService::preload_stream_state_cb(pa_stream *stream, void *user_data)
-{
-    struct play_feedback_data *pfd = (struct play_feedback_data*) user_data;
-
-    switch (pa_stream_get_state(stream)) {
-    case PA_STREAM_CREATING:
-    case PA_STREAM_READY:
-        return;
-    case PA_STREAM_TERMINATED:
-        g_message("Successfully uploaded sample %s to pulseaudio", pfd->name);
-        sample_list = g_slist_append(sample_list, g_strdup(pfd->name));
-        play_feedback_sample(pfd);
-        play_feedback_data_free(pfd);
-        break;
-    case PA_STREAM_FAILED:
-    default:
-        g_warning("Failed to upload sample %s", pfd->name);
-        luna_service_message_reply_custom_error(pfd->handle, pfd->message,
-                                                "Failed to upload sample to pulseaudio");
-        play_feedback_data_free(pfd);
-        break;
-    }
-}
-
-void AudioService::preload_stream_write_cb(pa_stream *stream, size_t length, void *user_data)
-{
-    struct play_feedback_data *pfd = (struct play_feedback_data*) user_data;
-    void *buffer;
-    ssize_t bread;
-
-    buffer = pa_xmalloc(pfd->sample_length);
-
-    bread = read(pfd->fd, buffer, pfd->sample_length);
-    pfd->stream_written += bread;
-
-    pa_stream_write(stream, buffer, bread, pa_xfree, 0, PA_SEEK_RELATIVE);
-
-    if (pfd->stream_written == pfd->sample_length) {
-        pa_stream_set_write_callback(stream, NULL, NULL);
-        pa_stream_finish_upload(stream);
-    }
-}
-
-bool AudioService::preload_sample(struct play_feedback_data *pfd)
-{
-    bool result = false;
-    struct stat st;
-    pa_sample_spec spec;
-    char *sample_path;
-
-    if (!pfd || !pfd->name)
-        return false;
-
-    if (g_slist_find(sample_list, pfd->name)) {
-        play_feedback_sample(pfd);
-        play_feedback_data_free(pfd);
-        return true;
-    }
-
-    sample_path = g_strdup_printf("%s/%s.pcm", SAMPLE_PATH, pfd->name);
-
-    if (stat(sample_path, &st) != 0)
-        goto cleanup;
-
-    pfd->sample_length = st.st_size;
-
-    spec.format = PA_SAMPLE_S16LE;
-    spec.rate = 44100;
-    spec.channels = 1;
-
-    pfd->fd = open(sample_path, O_RDONLY);
-    if (pfd->fd < 0)
-        goto cleanup;
-
-    pfd->sample_stream = pa_stream_new(pfd->service->context, pfd->name, &spec, NULL);
-    if (!pfd->sample_stream)
-        goto cleanup;
-
-    pa_stream_set_state_callback(pfd->sample_stream, preload_stream_state_cb, pfd);
-    pa_stream_set_write_callback(pfd->sample_stream, preload_stream_write_cb, pfd);
-    pa_stream_connect_upload(pfd->sample_stream, pfd->sample_length);
-
-    result = true;
-
-cleanup:
-    g_free(sample_path);
-
-    return result;
+    g_free(mDefaultSinkName);
 }
 
 bool AudioService::play_feedback_cb(LSHandle *handle, LSMessage *message, void *user_data)
@@ -302,27 +168,15 @@ bool AudioService::play_feedback_cb(LSHandle *handle, LSMessage *message, void *
     }
 
     play = luna_service_message_get_boolean(parsed_obj, "play", true);
-
     sink = luna_service_message_get_string(parsed_obj, "sink", NULL);
 
-    pfd = g_new0(struct play_feedback_data, 1);
-    pfd->service = service;
-    pfd->handle = handle;
-    pfd->message = message;
-    pfd->name = name;
-    pfd->sink = sink;
-    pfd->play = play;
+    FeedbackEffect *effect = new FeedbackEffect(this, name, sink, play);
 
     LSMessageRef(message);
 
-    if (!service->preload_sample(pfd)) {
-        luna_service_message_reply_custom_error(handle, message, "Could not preload sample");
-        LSMessageUnref(message);
-        g_free(pfd);
-        g_free(name);
-        g_free(sink);
-        goto cleanup;
-    }
+    effect->run([service, message](bool success) {
+
+    });
 
 cleanup:
     if (!jis_null(parsed_obj))
@@ -410,7 +264,7 @@ void AudioService::set_volume(int volume, void *user_data)
     new_volume = volume;
 
     pa_cvolume_set(&cvolume, 1, (new_volume * (double) (PA_VOLUME_NORM / 100)));
-    op = pa_context_set_sink_volume_by_name(context, default_sink_name, &cvolume, set_volume_success_cb, user_data);
+    op = pa_context_set_sink_volume_by_name(mContext, mDefaultSinkName, &cvolume, set_volume_success_cb, user_data);
     pa_operation_unref(op);
 }
 
@@ -577,7 +431,7 @@ bool AudioService::set_mute_cb(LSHandle *handle, LSMessage *message, void *user_
     req = luna_service_req_data_new(handle, message);
     req->user_data = service;
 
-    op = pa_context_set_sink_mute_by_name(service->context, service->default_sink_name, service->new_mute, set_mute_success_cb, req);
+    op = pa_context_set_sink_mute_by_name(service->mContext, service->mDefaultSinkName, service->new_mute, set_mute_success_cb, req);
     pa_operation_unref(op);
 
 cleanup:
@@ -651,7 +505,7 @@ void AudioService::cm_sourceinfo_cb(pa_context *context, const pa_source_info *i
         name_to_set = info->name;
 
     if (name_to_set) {
-        op = pa_context_set_source_port_by_name(service->context, name_to_set, value_to_set, cm_source_port_set_cb, req);
+        op = pa_context_set_source_port_by_name(service->mContext, name_to_set, value_to_set, cm_source_port_set_cb, req);
         pa_operation_unref(op);
     }
     else {
@@ -716,7 +570,7 @@ void AudioService::cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info,
         preferred = highest;
 
     if (preferred && preferred != info->active_port) {
-        op = pa_context_set_sink_port_by_name(service->context, info->name, preferred->name, cm_sink_port_set_cb, req);
+        op = pa_context_set_sink_port_by_name(service->mContext, info->name, preferred->name, cm_sink_port_set_cb, req);
         pa_operation_unref(op);
     }
     else {
@@ -771,7 +625,7 @@ void AudioService::cm_cardinfo_cb(pa_context *context, const pa_card_info *info,
     }
 
     if (name_to_set) {
-        op = pa_context_set_card_profile_by_name(service->context, name_to_set, value_to_set,
+        op = pa_context_set_card_profile_by_name(service->mContext, name_to_set, value_to_set,
                                             cm_card_profile_set_cb, req);
         pa_operation_unref(op);
     }
@@ -808,7 +662,7 @@ bool AudioService::set_call_mode_cb(LSHandle *handle, LSMessage *message, void *
     req = luna_service_req_data_new(handle, message);
     req->user_data = service;
 
-    op = pa_context_get_card_info_list(service->context, cm_cardinfo_cb, req);
+    op = pa_context_get_card_info_list(service->mContext, cm_cardinfo_cb, req);
     pa_operation_unref(op);
 
 cleanup:
@@ -879,7 +733,7 @@ void AudioService::mm_sourceinfo_cb(pa_context *context, const pa_source_info *i
         name_to_set = info->name;
 
     if (name_to_set) {
-        op = pa_context_set_source_mute_by_name(service->context, name_to_set, service->mic_mute,
+        op = pa_context_set_source_mute_by_name(service->mContext, name_to_set, service->mic_mute,
                                                 mm_set_source_mute_cb, req);
         pa_operation_unref(op);
     }
@@ -914,7 +768,7 @@ bool AudioService::set_mic_mute_cb(LSHandle *handle, LSMessage *message, void *u
     req = luna_service_req_data_new(handle, message);
     req->user_data = service;
 
-    op = pa_context_get_source_info_list(service->context, mm_sourceinfo_cb, req);
+    op = pa_context_get_source_info_list(service->mContext, mm_sourceinfo_cb, req);
     pa_operation_unref(op);
 
 cleanup:
@@ -948,15 +802,15 @@ void AudioService::server_info_cb(pa_context *context, const pa_server_info *inf
     if (info == NULL)
         return;
 
-    g_free(service->default_sink_name);
-    service->default_sink_name = g_strdup(info->default_sink_name);
+    g_free(service->mDefaultSinkName);
+    service->mDefaultSinkName = g_strdup(info->default_sink_name);
 
-    pa_context_get_sink_info_by_name(service->context, info->default_sink_name, &AudioService::default_sink_info_cb, service);
+    pa_context_get_sink_info_by_name(service->mContext, info->default_sink_name, &AudioService::default_sink_info_cb, service);
 }
 
 void AudioService::update_properties()
 {
-    pa_context_get_server_info(context, server_info_cb, this);
+    pa_context_get_server_info(mContext, server_info_cb, this);
 }
 
 void AudioService::context_subscribe_cb(pa_context *context, pa_subscription_event_type_t type, uint32_t idx, void *user_data)
@@ -978,7 +832,7 @@ void AudioService::context_state_cb(pa_context *context, void *user_data)
     AudioService *service = static_cast<AudioService*>(user_data);
 
     if (!service->context_initialized) {
-        switch (pa_context_get_state(service->context)) {
+        switch (pa_context_get_state(service->mContext)) {
         case PA_CONTEXT_CONNECTING:
         case PA_CONTEXT_AUTHORIZING:
         case PA_CONTEXT_SETTING_NAME:
@@ -998,8 +852,8 @@ void AudioService::context_state_cb(pa_context *context, void *user_data)
         }
 
         if (service->context_initialized) {
-            pa_context_set_subscribe_callback(service->context, context_subscribe_cb, service);
-            pa_context_subscribe(service->context, PA_SUBSCRIPTION_MASK_CARD, NULL, service);
+            pa_context_set_subscribe_callback(service->mContext, context_subscribe_cb, service);
+            pa_context_subscribe(service->mContext, PA_SUBSCRIPTION_MASK_CARD, NULL, service);
             service->update_properties();
         }
     }

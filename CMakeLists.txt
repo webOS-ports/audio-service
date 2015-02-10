@@ -24,6 +24,8 @@ include(webOS/webOS)
 webos_modules_init(1 0 0 QUALIFIER RC2)
 webos_component(0 1 0)
 
+webos_add_compiler_flags(ALL -std=c++11)
+
 include(FindPkgConfig)
 
 pkg_check_modules(GLIB2 REQUIRED glib-2.0)
@@ -52,8 +54,9 @@ webos_add_compiler_flags(ALL ${LIBPULSE_MAINLOOP_GLIB_CFLAGS_OTHER})
 
 file(GLOB SOURCE_FILES
     src/main.cpp
-    src/audio_service.cpp
-    src/luna_service_utils.cpp)
+    src/audioservice.cpp
+    src/feedbackeffect.cpp
+    src/lunaserviceutils.cpp)
 
 webos_add_compiler_flags(ALL -Wall)
 webos_add_linker_options(ALL --no-undefined)
