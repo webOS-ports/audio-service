@@ -16,12 +16,19 @@
 *
 * LICENSE@@@ */
 
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #include "feedbackeffect.h"
-#include "audio_service.h"
+#include "audioservice.h"
+
+#define SAMPLE_PATH		"/usr/share/systemsounds"
 
 static GSList *sample_list = NULL;
 
-FeedbackEffect::FeedbackEffect(AudioService *service, const char *name, const char *sink, bool play) :
+FeedbackEffect::FeedbackEffect(AudioService *service, const std::string& name, const std::string& sink, bool play) :
     mService(service),
     mName(name),
     mSink(sink),
@@ -35,16 +42,13 @@ FeedbackEffect::~FeedbackEffect()
 {
     if (mFd > 0)
         close(mFd);
-
-    if (mName)
-        g_free(mName);
 }
 
 void FeedbackEffect::run(FeedbackEffectResultCallback callback)
 {
     mCallback = callback;
 
-    if (!mName) {
+    if (mName.length() == 0) {
         finish(false);
         return;
     }
@@ -60,9 +64,9 @@ void FeedbackEffect::play_sample()
 {
     pa_operation *op;
     pa_proplist *proplist;
-    char *sink = pfd->sink;
+    const char *sink = mSink.c_str();
 
-    if (!pfd->play) {
+    if (!mPlay) {
         finish(true);
         return;
     }
@@ -79,7 +83,8 @@ void FeedbackEffect::play_sample()
     proplist = pa_proplist_new();
     pa_proplist_setf(proplist, PA_PROP_MEDIA_ROLE, "event");
 
-    op = pa_context_play_sample_with_proplist(mService->pa_context(), mName, mSink, PA_VOLUME_NORM, proplist, NULL, NULL);
+    op = pa_context_play_sample_with_proplist(mService->context(), mName.c_str(),
+                                              sink, PA_VOLUME_NORM, proplist, NULL, NULL);
     if (op)
         pa_operation_unref(op);
 
@@ -95,13 +100,13 @@ void FeedbackEffect::preload_stream_state_cb(pa_stream *stream, void *user_data)
     case PA_STREAM_READY:
         return;
     case PA_STREAM_TERMINATED:
-        g_message("Successfully uploaded sample %s to pulseaudio", effect->mName);
-        sample_list = g_slist_append(sample_list, g_strdup(effect->mName));
+        g_message("Successfully uploaded sample %s to pulseaudio", effect->mName.c_str());
+        sample_list = g_slist_append(sample_list, g_strdup(effect->mName.c_str()));
         effect->play_sample();
         break;
     case PA_STREAM_FAILED:
     default:
-        g_warning("Failed to upload sample %s", pfd->name);
+        g_warning("Failed to upload sample %s", effect->mName.c_str());
         effect->finish(false);
         break;
     }
@@ -113,7 +118,7 @@ void FeedbackEffect::preload_stream_write_cb(pa_stream *stream, size_t length, v
     void *buffer;
     ssize_t bread;
 
-    buffer = pa_xmalloc(mSampleLength);
+    buffer = pa_xmalloc(effect->mSampleLength);
 
     bread = read(effect->mFd, buffer, effect->mSampleLength);
     effect->mStreamWritten += bread;
@@ -132,12 +137,12 @@ void FeedbackEffect::preload_sample()
     pa_sample_spec spec;
     char *sample_path;
 
-    if (g_slist_find(sample_list, mName)) {
+    if (g_slist_find(sample_list, mName.c_str())) {
         play_sample();
         return;
     }
 
-    sample_path = g_strdup_printf("%s/%s.pcm", SAMPLE_PATH, mName);
+    sample_path = g_strdup_printf("%s/%s.pcm", SAMPLE_PATH, mName.c_str());
 
     if (stat(sample_path, &st) != 0) {
         g_free(sample_path);
@@ -158,7 +163,7 @@ void FeedbackEffect::preload_sample()
         return;
     }
 
-    mSampleStream = pa_stream_new(mService->pa_context(), mName, &spec, NULL);
+    mSampleStream = pa_stream_new(mService->context(), mName.c_str(), &spec, NULL);
     if (!mSampleStream){
         g_free(sample_path);
         finish(false);

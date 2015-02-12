@@ -27,7 +27,7 @@
 #include <glib.h>
 #include <glib-object.h>
 
-#include "audio_service.h"
+#include "audioservice.h"
 
 #define SHUTDOWN_GRACE_SECONDS		2
 #define VERSION						"0.1"

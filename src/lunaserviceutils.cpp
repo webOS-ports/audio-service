@@ -16,7 +16,7 @@
 *
 * LICENSE@@@ */
 
-#include "luna_service_utils.h"
+#include "lunaserviceutils.h"
 
 void luna_service_message_reply_custom_error(LSHandle *handle, LSMessage *message, const char *error_text)
 {

@@ -21,6 +21,7 @@
 
 #include <string>
 #include <functional>
+#include <pulse/pulseaudio.h>
 
 typedef std::function<void(bool)> FeedbackEffectResultCallback;
 
@@ -29,7 +30,7 @@ class AudioService;
 class FeedbackEffect
 {
 public:
-    FeedbackEffect(AudioService *service, const std::string name, const std::string sink, bool play);
+    FeedbackEffect(AudioService *service, const std::string& name, const std::string& sink, bool play);
     ~FeedbackEffect();
 
     void run(FeedbackEffectResultCallback callback);

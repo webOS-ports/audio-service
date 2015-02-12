@@ -32,13 +32,11 @@
 #include <pulse/pulseaudio.h>
 #include <pulse/glib-mainloop.h>
 
-#include "audio_service.h"
+#include "audioservice.h"
 #include "feedbackeffect.h"
 
-#include "luna_service_utils.h"
+#include "lunaserviceutils.h"
 #include "utils.h"
-
-#define SAMPLE_PATH		"/usr/share/systemsounds"
 
 #define VOLUME_STEP		11
 
@@ -138,16 +136,19 @@ AudioService::~AudioService()
     }
 
     g_free(mDefaultSinkName);
+
+    if (mContext)
+        pa_context_unref(mContext);
 }
 
 bool AudioService::play_feedback_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
     AudioService *service = static_cast<AudioService*>(user_data);
-    struct play_feedback_data *pfd;
     const char *payload;
     jvalue_ref parsed_obj;
     char *name, *sink;
     bool play;
+    FeedbackEffect *effect = 0;
 
     if (!service->context_initialized) {
         luna_service_message_reply_custom_error(handle, message, "Not yet initialized");
@@ -170,7 +171,7 @@ bool AudioService::play_feedback_cb(LSHandle *handle, LSMessage *message, void *
     play = luna_service_message_get_boolean(parsed_obj, "play", true);
     sink = luna_service_message_get_string(parsed_obj, "sink", NULL);
 
-    FeedbackEffect *effect = new FeedbackEffect(this, name, sink, play);
+    effect = new FeedbackEffect(service, name, sink, play);
 
     LSMessageRef(message);
 
