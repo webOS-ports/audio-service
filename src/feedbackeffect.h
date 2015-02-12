@@ -50,9 +50,6 @@ private:
     void preload_sample();
     void play_sample();
     void finish(bool success);
-
-    static void preload_stream_write_cb(pa_stream *stream, size_t length, void *user_data);
-    static void preload_stream_state_cb(pa_stream *stream, void *user_data);
 };
 
 #endif // FEEDBACKEFFECT_H

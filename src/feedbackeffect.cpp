@@ -84,51 +84,23 @@ void FeedbackEffect::play_sample()
     pa_proplist_setf(proplist, PA_PROP_MEDIA_ROLE, "event");
 
     op = pa_context_play_sample_with_proplist(mService->context(), mName.c_str(),
-                                              sink, PA_VOLUME_NORM, proplist, NULL, NULL);
+                                              sink, PA_VOLUME_NORM, proplist,
+                                              [] (pa_context *c, uint32_t idx, void *user_data) {
+        FeedbackEffect *effect = static_cast<FeedbackEffect*>(user_data);
+
+        if (idx == PA_INVALID_INDEX) {
+            effect->finish(false);
+            return;
+        }
+
+        effect->finish(true);
+
+    }, this);
+
     if (op)
         pa_operation_unref(op);
 
     finish(true);
-}
-
-void FeedbackEffect::preload_stream_state_cb(pa_stream *stream, void *user_data)
-{
-    FeedbackEffect *effect = static_cast<FeedbackEffect*>(user_data);
-
-    switch (pa_stream_get_state(stream)) {
-    case PA_STREAM_CREATING:
-    case PA_STREAM_READY:
-        return;
-    case PA_STREAM_TERMINATED:
-        g_message("Successfully uploaded sample %s to pulseaudio", effect->mName.c_str());
-        sample_list = g_slist_append(sample_list, g_strdup(effect->mName.c_str()));
-        effect->play_sample();
-        break;
-    case PA_STREAM_FAILED:
-    default:
-        g_warning("Failed to upload sample %s", effect->mName.c_str());
-        effect->finish(false);
-        break;
-    }
-}
-
-void FeedbackEffect::preload_stream_write_cb(pa_stream *stream, size_t length, void *user_data)
-{
-    FeedbackEffect *effect = static_cast<FeedbackEffect*>(user_data);
-    void *buffer;
-    ssize_t bread;
-
-    buffer = pa_xmalloc(effect->mSampleLength);
-
-    bread = read(effect->mFd, buffer, effect->mSampleLength);
-    effect->mStreamWritten += bread;
-
-    pa_stream_write(stream, buffer, bread, pa_xfree, 0, PA_SEEK_RELATIVE);
-
-    if (effect->mStreamWritten == effect->mSampleLength) {
-        pa_stream_set_write_callback(stream, NULL, NULL);
-        pa_stream_finish_upload(stream);
-    }
 }
 
 void FeedbackEffect::preload_sample()
@@ -170,8 +142,44 @@ void FeedbackEffect::preload_sample()
         return;
     }
 
-    pa_stream_set_state_callback(mSampleStream, preload_stream_state_cb, this);
-    pa_stream_set_write_callback(mSampleStream, preload_stream_write_cb, this);
+    pa_stream_set_state_callback(mSampleStream, [](pa_stream *stream, void *user_data) {
+        FeedbackEffect *effect = static_cast<FeedbackEffect*>(user_data);
+
+        switch (pa_stream_get_state(stream)) {
+        case PA_STREAM_CREATING:
+        case PA_STREAM_READY:
+            return;
+        case PA_STREAM_TERMINATED:
+            g_message("Successfully uploaded sample %s to pulseaudio", effect->mName.c_str());
+            sample_list = g_slist_append(sample_list, g_strdup(effect->mName.c_str()));
+            effect->play_sample();
+            break;
+        case PA_STREAM_FAILED:
+        default:
+            g_warning("Failed to upload sample %s", effect->mName.c_str());
+            effect->finish(false);
+            break;
+        }
+    }, this);
+
+    pa_stream_set_write_callback(mSampleStream, [](pa_stream *stream, size_t length, void *user_data) {
+        FeedbackEffect *effect = static_cast<FeedbackEffect*>(user_data);
+        void *buffer;
+        ssize_t bread;
+
+        buffer = pa_xmalloc(effect->mSampleLength);
+
+        bread = read(effect->mFd, buffer, effect->mSampleLength);
+        effect->mStreamWritten += bread;
+
+        pa_stream_write(stream, buffer, bread, pa_xfree, 0, PA_SEEK_RELATIVE);
+
+        if (effect->mStreamWritten == effect->mSampleLength) {
+            pa_stream_set_write_callback(stream, NULL, NULL);
+            pa_stream_finish_upload(stream);
+        }
+    }, this);
+
     pa_stream_connect_upload(mSampleStream, mSampleLength);
 
     g_free(sample_path);

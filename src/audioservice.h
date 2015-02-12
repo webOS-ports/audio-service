@@ -60,7 +60,6 @@ private:
     static void context_subscribe_cb(pa_context *mContext, pa_subscription_event_type_t type, uint32_t idx, void *user_data);
     static void server_info_cb(pa_context *mContext, const pa_server_info *info, void *user_data);
     static void default_sink_info_cb(pa_context *mContext, const pa_sink_info *info, int eol, void *user_data);
-    static void set_volume_success_cb(pa_context *mContext, int success, void *user_data);
     static void mm_sourceinfo_cb(pa_context *mContext, const pa_source_info *info, int is_last, void *user_data);
     static void mm_set_source_mute_cb(pa_context *mContext, int success, void *user_data);
     static void cm_cardinfo_cb(pa_context *mContext, const pa_card_info *info, int is_last, void *user_data);
@@ -69,7 +68,6 @@ private:
     static void cm_sink_port_set_cb(pa_context *mContext, int success, void *user_data);
     static void cm_sourceinfo_cb(pa_context *mContext, const pa_source_info *info, int is_last, void *user_data);
     static void cm_source_port_set_cb(pa_context *mContext, int success, void *user_data);
-    static void set_mute_success_cb(pa_context *mContext, int success, void *user_data);
 
 public:
     static bool get_status_cb(LSHandle *handle, LSMessage *message, void *user_data);

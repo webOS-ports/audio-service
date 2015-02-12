@@ -176,7 +176,12 @@ bool AudioService::play_feedback_cb(LSHandle *handle, LSMessage *message, void *
     LSMessageRef(message);
 
     effect->run([service, message](bool success) {
+        if (success)
+            luna_service_message_reply_success(message);
+        else
+            luna_service_message_reply_error_internal(message);
 
+        LSMessageUnref(message);
     });
 
 cleanup:
@@ -237,26 +242,6 @@ void AudioService::notify_status_subscribers()
     j_release(&reply_obj);
 }
 
-void AudioService::set_volume_success_cb(pa_context *context, int success, void *user_data)
-{
-    struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
-    AudioService *service = static_cast<AudioService*>(req->user_data);
-
-    if (!success) {
-        luna_service_message_reply_custom_error(req->handle, req->message, "Could not mute/unmute default sink");
-        goto cleanup;
-    }
-
-    service->volume = service->new_volume;
-
-    service->notify_status_subscribers();
-
-    luna_service_message_reply_success(req->handle, req->message);
-
-cleanup:
-    luna_service_req_data_free(req);
-}
-
 void AudioService::set_volume(int volume, void *user_data)
 {
     pa_cvolume cvolume;
@@ -265,7 +250,28 @@ void AudioService::set_volume(int volume, void *user_data)
     new_volume = volume;
 
     pa_cvolume_set(&cvolume, 1, (new_volume * (double) (PA_VOLUME_NORM / 100)));
-    op = pa_context_set_sink_volume_by_name(mContext, mDefaultSinkName, &cvolume, set_volume_success_cb, user_data);
+
+    op = pa_context_set_sink_volume_by_name(mContext, mDefaultSinkName, &cvolume,
+                                            [] (pa_context *context, int success, void *user_data) {
+
+        struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
+        AudioService *service = static_cast<AudioService*>(req->user_data);
+
+        if (!success) {
+            luna_service_message_reply_custom_error(req->handle, req->message, "Could not mute/unmute default sink");
+            goto cleanup;
+        }
+
+        service->volume = service->new_volume;
+
+        service->notify_status_subscribers();
+
+        luna_service_message_reply_success(req->handle, req->message);
+
+    cleanup:
+        luna_service_req_data_free(req);
+
+    }, user_data);
     pa_operation_unref(op);
 }
 
@@ -382,26 +388,6 @@ cleanup:
     return true;
 }
 
-void AudioService::set_mute_success_cb(pa_context *context, int success, void *user_data)
-{
-    struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
-    AudioService *service = static_cast<AudioService*>(req->user_data);
-
-    if (!success) {
-        luna_service_message_reply_custom_error(req->handle, req->message, "Could not mute/unmute default sink");
-        goto cleanup;
-    }
-
-    service->mute = service->new_mute;
-
-    service->notify_status_subscribers();
-
-    luna_service_message_reply_success(req->handle, req->message);
-
-cleanup:
-    luna_service_req_data_free(req);
-}
-
 bool AudioService::set_mute_cb(LSHandle *handle, LSMessage *message, void *user_data)
 {
     AudioService *service = static_cast<AudioService*>(user_data);
@@ -432,7 +418,29 @@ bool AudioService::set_mute_cb(LSHandle *handle, LSMessage *message, void *user_
     req = luna_service_req_data_new(handle, message);
     req->user_data = service;
 
-    op = pa_context_set_sink_mute_by_name(service->mContext, service->mDefaultSinkName, service->new_mute, set_mute_success_cb, req);
+    op = pa_context_set_sink_mute_by_name(service->mContext, service->mDefaultSinkName, service->new_mute,
+                                          [](pa_context *context, int success, void *user_data) {
+
+        struct luna_service_req_data *req = (struct luna_service_req_data*) user_data;
+        AudioService *service = static_cast<AudioService*>(req->user_data);
+
+        if (!success) {
+            luna_service_message_reply_custom_error(req->handle, req->message,
+                                                    "Could not mute/unmute default sink");
+            luna_service_req_data_free(req);
+            return;
+        }
+
+        service->mute = service->new_mute;
+
+        service->notify_status_subscribers();
+
+        luna_service_message_reply_success(req->handle, req->message);
+
+        luna_service_req_data_free(req);
+
+    }, req);
+
     pa_operation_unref(op);
 
 cleanup:
