@@ -67,6 +67,11 @@ static LSMethod audio_service_methods[]  = {
     { NULL, NULL }
 };
 
+static LSMethod system_sounds_methods[] = {
+    { "playFeedback", &AudioService::play_feedback_cb },
+    { NULL, NULL }
+};
+
 AudioService::AudioService()
 {
     LSError error;
@@ -89,7 +94,20 @@ AudioService::AudioService()
     }
 
     if (!LSCategorySetData(handle, "/", this, &error)) {
-        g_warning("Could not set daa for service category: %s", error.message);
+        g_warning("Could not set dtaa for service category: %s", error.message);
+        LSErrorFree(&error);
+        goto error;
+    }
+
+    if (!LSRegisterCategory(handle, "/systemsounds", system_sounds_methods,
+            NULL, NULL, &error)) {
+        g_warning("Could not register service category: %s", error.message);
+        LSErrorFree(&error);
+        goto error;
+    }
+
+    if (!LSCategorySetData(handle, "/systemsounds", this, &error)) {
+        g_warning("Could not set data for service category: %s", error.message);
         LSErrorFree(&error);
         goto error;
     }
