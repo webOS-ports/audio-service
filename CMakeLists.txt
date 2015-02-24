@@ -22,7 +22,7 @@ project(audio-service CXX)
 
 include(webOS/webOS)
 webos_modules_init(1 0 0 QUALIFIER RC2)
-webos_component(0 1 0)
+webos_component(0 2 0)
 
 webos_add_compiler_flags(ALL -std=c++11)
 
