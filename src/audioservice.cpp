@@ -99,20 +99,32 @@ AudioService::AudioService()
         goto error;
     }
 
-    if (!LSRegisterCategory(handle, "/systemsounds", system_sounds_methods,
+    if (!LSRegisterPubPriv("com.palm.audio", &palmHandle, true, &error)) {
+        g_warning("Failed to register the luna service: %s", error.message);
+        LSErrorFree(&error);
+        goto error;
+    }
+
+    if (!LSRegisterCategory(palmHandle, "/systemsounds", system_sounds_methods,
             NULL, NULL, &error)) {
         g_warning("Could not register service category: %s", error.message);
         LSErrorFree(&error);
         goto error;
     }
 
-    if (!LSCategorySetData(handle, "/systemsounds", this, &error)) {
+    if (!LSCategorySetData(palmHandle, "/systemsounds", this, &error)) {
         g_warning("Could not set data for service category: %s", error.message);
         LSErrorFree(&error);
         goto error;
     }
 
     if (!LSGmainAttach(handle, event_loop, &error)) {
+        g_warning("Could not attach service handle to mainloop: %s", error.message);
+        LSErrorFree(&error);
+        goto error;
+    }
+
+    if (!LSGmainAttach(palmHandle, event_loop, &error)) {
         g_warning("Could not attach service handle to mainloop: %s", error.message);
         LSErrorFree(&error);
         goto error;

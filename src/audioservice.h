@@ -34,6 +34,7 @@ public:
 
 private:
     LSHandle *handle;
+    LSHandle *palmHandle;
     pa_glib_mainloop *pa_mainloop;
     pa_context *mContext;
     bool context_initialized;
