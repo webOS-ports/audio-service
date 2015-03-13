@@ -16,7 +16,7 @@
 *
 * LICENSE@@@ */
 
-#include "luna_service_utils.h"
+#include "lunaserviceutils.h"
 
 void luna_service_message_reply_custom_error(LSHandle *handle, LSMessage *message, const char *error_text)
 {
@@ -62,6 +62,11 @@ void luna_service_message_reply_error_internal(LSHandle *handle, LSMessage *mess
 	luna_service_message_reply_custom_error(handle, message, "Internal error.");
 }
 
+void luna_service_message_reply_error_internal(LSMessage *message)
+{
+    luna_service_message_reply_error_internal(LSMessageGetConnection(message), message);
+}
+
 void luna_service_message_reply_success(LSHandle *handle, LSMessage *message)
 {
 	bool ret;
@@ -74,6 +79,11 @@ void luna_service_message_reply_success(LSHandle *handle, LSMessage *message)
 		LSErrorPrint(&lserror, stderr);
 		LSErrorFree(&lserror);
 	}
+}
+
+void luna_service_message_reply_success(LSMessage *message)
+{
+    luna_service_message_reply_success(LSMessageGetConnection(message), message);
 }
 
 jvalue_ref luna_service_message_parse_and_validate(const char *payload)
@@ -186,5 +196,3 @@ cleanup:
 	if (response_schema)
 		jschema_release(&response_schema);
 }
-
-// vim:ts=4:sw=4:noexpandtab
