@@ -32,10 +32,10 @@ FeedbackEffect::FeedbackEffect(AudioService *service, const std::string& name, c
     mService(service),
     mName(name),
     mSink(sink),
-    mPlay(play)
+    mPlay(play),
+    mSampleLength(0),
+    mStreamWritten(0)
 {
-    if (sample_list == NULL)
-        sample_list = g_slist_alloc();
 }
 
 FeedbackEffect::~FeedbackEffect()
@@ -52,6 +52,8 @@ void FeedbackEffect::run(FeedbackEffectResultCallback callback)
         finish(false);
         return;
     }
+
+    preload_sample();
 }
 
 void FeedbackEffect::finish(bool success)
@@ -64,15 +66,17 @@ void FeedbackEffect::play_sample()
 {
     pa_operation *op;
     pa_proplist *proplist;
-    const char *sink = mSink.c_str();
+    const char *sink = 0;
 
     if (!mPlay) {
         finish(true);
         return;
     }
 
-    if (!sink)
+    if (mSink.length() == 0)
         sink = mService->default_sink_name();
+    else
+        sink = mSink.c_str();
 
     if (!sink) {
         finish(false);
@@ -82,6 +86,8 @@ void FeedbackEffect::play_sample()
     /* make sure we're running as event to enable ducking */
     proplist = pa_proplist_new();
     pa_proplist_setf(proplist, PA_PROP_MEDIA_ROLE, "event");
+
+    g_message("Playing sample %s on sink %s", mName.c_str(), sink);
 
     op = pa_context_play_sample_with_proplist(mService->context(), mName.c_str(),
                                               sink, PA_VOLUME_NORM, proplist,
@@ -99,8 +105,6 @@ void FeedbackEffect::play_sample()
 
     if (op)
         pa_operation_unref(op);
-
-    finish(true);
 }
 
 void FeedbackEffect::preload_sample()
@@ -109,14 +113,19 @@ void FeedbackEffect::preload_sample()
     pa_sample_spec spec;
     char *sample_path;
 
-    if (g_slist_find(sample_list, mName.c_str())) {
+    if (g_slist_find_custom(sample_list, mName.c_str(),
+                            [](gconstpointer a, gconstpointer b) { return g_strcmp0((gchar*) a, (gchar*) b); })) {
+        g_message("Not preloading sample %s as it is already", mName.c_str());
         play_sample();
         return;
     }
 
+    g_message("Preloading sample %s", mName.c_str());
+
     sample_path = g_strdup_printf("%s/%s.pcm", SAMPLE_PATH, mName.c_str());
 
     if (stat(sample_path, &st) != 0) {
+        g_warning("Sample %s doesn't exist", sample_path);
         g_free(sample_path);
         finish(false);
         return;

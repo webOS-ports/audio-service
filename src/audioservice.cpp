@@ -189,7 +189,7 @@ bool AudioService::play_feedback_cb(LSHandle *handle, LSMessage *message, void *
     play = luna_service_message_get_boolean(parsed_obj, "play", true);
     sink = luna_service_message_get_string(parsed_obj, "sink", NULL);
 
-    effect = new FeedbackEffect(service, name, sink, play);
+    effect = new FeedbackEffect(service, name, std::string(sink ? sink : ""), play);
 
     LSMessageRef(message);
 
@@ -247,6 +247,8 @@ cleanup:
 
 void AudioService::notify_status_subscribers()
 {
+    g_message("Sending audio status update to subscribers");
+
     jvalue_ref reply_obj = NULL;
 
     reply_obj = jobject_create();

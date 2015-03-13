@@ -30,7 +30,7 @@
 #include "audioservice.h"
 
 #define SHUTDOWN_GRACE_SECONDS		2
-#define VERSION						"0.1"
+#define VERSION						"0.2"
 
 GMainLoop *event_loop;
 static gboolean option_detach = FALSE;
