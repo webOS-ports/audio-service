@@ -47,6 +47,7 @@ private:
     bool in_call;
     bool speaker_mode;
     bool mic_mute;
+    bool volume_locked;
 
 private:
     void update_properties();
