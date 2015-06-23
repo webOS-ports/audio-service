@@ -1,6 +1,6 @@
 /* @@@LICENSE
 *
-* Copyright (c) 2013 Simon Busch <morphis@gravedo.de>
+* Copyright (c) 2013-2015 Simon Busch <morphis@gravedo.de>
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -72,7 +72,22 @@ static LSMethod system_sounds_methods[] = {
     { NULL, NULL }
 };
 
-AudioService::AudioService()
+AudioService::AudioService() :
+    handle(0),
+    palmHandle(0),
+    pa_mainloop(0),
+    mContext(0),
+    context_initialized(false),
+    volume(0),
+    new_volume(0),
+    mute(0),
+    new_mute(0),
+    mDefaultSinkName(0),
+    default_sink_index(0),
+    in_call(false),
+    speaker_mode(false),
+    mic_mute(false),
+    volume_locked(false)
 {
     LSError error;
     pa_mainloop_api *mainloop_api;
@@ -295,6 +310,7 @@ void AudioService::set_volume(int volume, void *user_data)
         }
 
         service->volume = service->new_volume;
+        service->volume_locked = false;
 
         service->notify_status_subscribers();
 
@@ -318,6 +334,11 @@ bool AudioService::volume_up_cb(LSHandle *handle, LSMessage *message, void *user
         return true;
     }
 
+    if (service->volume_locked) {
+        luna_service_message_reply_custom_error(handle, message, "Volume operation already pending");
+        return true;
+    }
+
     normalized_volume = (service->volume / VOLUME_STEP) * VOLUME_STEP;
     if (normalized_volume >= 99)
         goto done;
@@ -327,6 +348,9 @@ bool AudioService::volume_up_cb(LSHandle *handle, LSMessage *message, void *user
 
     req = luna_service_req_data_new(handle, message);
     req->user_data = service;
+
+    service->volume_locked = true;
+    service->new_volume = normalized_volume + VOLUME_STEP;
 
     service->set_volume(normalized_volume + VOLUME_STEP, req);
 
@@ -349,6 +373,11 @@ bool AudioService::volume_down_cb(LSHandle *handle, LSMessage *message, void *us
         return true;
     }
 
+    if (service->volume_locked) {
+        luna_service_message_reply_custom_error(handle, message, "Volume operation already pending");
+        return true;
+    }
+
     normalized_volume = ((service->volume + VOLUME_STEP - 1) / VOLUME_STEP) * VOLUME_STEP;
     if (normalized_volume >= 100) /* If service->volume is 100, we'd be at 110. Adjust */
         normalized_volume = 99;
@@ -358,7 +387,10 @@ bool AudioService::volume_down_cb(LSHandle *handle, LSMessage *message, void *us
     req = luna_service_req_data_new(handle, message);
     req->user_data = service;
 
-    service->set_volume(normalized_volume - VOLUME_STEP, req);
+    service->volume_locked = true;
+    service->new_volume = normalized_volume - VOLUME_STEP;
+
+    service->set_volume(service->new_volume, req);
 
     return true;
 
@@ -382,6 +414,11 @@ bool AudioService::set_volume_cb(LSHandle *handle, LSMessage *message, void *use
         return true;
     }
 
+    if (service->volume_locked) {
+        luna_service_message_reply_custom_error(handle, message, "Volume operation already pending");
+        return true;
+    }
+
     payload = LSMessageGetPayload(message);
     parsed_obj = luna_service_message_parse_and_validate(payload);
     if (jis_null(parsed_obj)) {
@@ -402,7 +439,7 @@ bool AudioService::set_volume_cb(LSHandle *handle, LSMessage *message, void *use
         goto cleanup;
     }
 
-    if (service->new_volume == service->volume) {
+    if (new_volume == service->volume) {
         luna_service_message_reply_custom_error(handle, message,
             "Provided volume doesn't differ from current one");
         goto cleanup;
@@ -410,6 +447,9 @@ bool AudioService::set_volume_cb(LSHandle *handle, LSMessage *message, void *use
 
     req = luna_service_req_data_new(handle, message);
     req->user_data = service;
+
+    service->volume_locked = true;
+    service->new_volume = new_volume;
 
     service->set_volume(service->new_volume, req);
 
