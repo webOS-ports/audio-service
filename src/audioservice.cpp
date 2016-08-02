@@ -738,7 +738,7 @@ bool AudioService::set_call_mode_cb(LSHandle *handle, LSMessage *message, void *
     }
 
     service->in_call = luna_service_message_get_boolean(parsed_obj, "inCall", service->in_call);
-    service->speaker_mode = luna_service_message_get_boolean(parsed_obj, "speakerMode", service->in_call);
+    service->speaker_mode = luna_service_message_get_boolean(parsed_obj, "speakerMode", service->speaker_mode);
 
     req = luna_service_req_data_new(handle, message);
     req->user_data = service;
