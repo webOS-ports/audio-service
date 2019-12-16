@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.webosports.service.audio;com.palm.audio;com.webos.audio;com.webos.service.audio
+Exec=/usr/sbin/audio-service
+Type=static
