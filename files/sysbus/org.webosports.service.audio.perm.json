@@ -1,0 +1,43 @@
+{
+    "com.webos.audio": [
+        "devices",
+        "system",
+        "settings",
+        "media",
+        "tv.services",
+        "applications.query"
+    ],
+    "com.webos.service.audio": [
+        "devices",
+        "services",
+        "system",
+        "telephony",
+        "settings",
+        "media",
+        "tv.services",
+        "applications.query",
+        "audiooutputd"
+    ],
+    "com.palm.audio": [
+        "devices",
+        "services",
+        "system",
+        "telephony",
+        "settings",
+        "media",
+        "tv.services",
+        "applications.query",
+        "audiooutputd"
+    ],
+    "org.webosports.service.audio": [
+        "devices",
+        "services",
+        "system",
+        "telephony",
+        "settings",
+        "media",
+        "tv.services",
+        "applications.query",
+        "audiooutputd"
+    ]
+}

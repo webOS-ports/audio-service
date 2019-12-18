@@ -95,7 +95,7 @@ AudioService::AudioService() :
 
     LSErrorInit(&error);
 
-    if (!LSRegisterPubPriv("org.webosports.audio", &handle, false, &error)) {
+    if (!LSRegisterPubPriv("org.webosports.service.audio", &handle, false, &error)) {
         g_warning("Failed to register the luna service: %s", error.message);
         LSErrorFree(&error);
         goto error;
