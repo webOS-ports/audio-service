@@ -689,7 +689,7 @@ void AudioService::cm_cardinfo_cb(pa_context *context, const pa_card_info *info,
     for (i = 0; i < info->n_profiles; i++) {
         if (!highest || info->profiles[i].priority > highest->priority)
             highest = &info->profiles[i];
-        if (!strcmp(info->profiles[i].name, "voicecall"))
+        if (!strcasecmp(info->profiles[i].name, "voicecall") || !strcasecmp(info->profiles[i].name, "voice call"))
             voice_call = &info->profiles[i];
     }
 
