@@ -95,7 +95,7 @@ AudioService::AudioService() :
 
     LSErrorInit(&error);
 
-    if (!LSRegisterPubPriv("org.webosports.service.audio", &handle, false, &error)) {
+    if (!LSRegister("org.webosports.service.audio", &handle, &error)) {
         g_warning("Failed to register the luna service: %s", error.message);
         LSErrorFree(&error);
         goto error;
@@ -114,7 +114,7 @@ AudioService::AudioService() :
         goto error;
     }
 
-    if (!LSRegisterPubPriv("com.palm.audio", &palmHandle, true, &error)) {
+    if (!LSRegister("com.palm.audio", &palmHandle, &error)) {
         g_warning("Failed to register the luna service: %s", error.message);
         LSErrorFree(&error);
         goto error;
@@ -618,6 +618,9 @@ void AudioService::cm_sinkinfo_cb(pa_context *context, const pa_sink_info *info,
         needreply = true;
         return;
     }
+    
+    // a reply is already being sent. Don't send another.
+    if(!needreply) return;
 
     for (i = 0; i < info->n_ports; i++) {
         if (!highest || info->ports[i]->priority > highest->priority) {
@@ -685,6 +688,9 @@ void AudioService::cm_cardinfo_cb(pa_context *context, const pa_card_info *info,
         needreply = true;
         return;
     }
+    
+    // a reply is already being sent. Don't send another.
+    if(!needreply) return;
 
     for (i = 0; i < info->n_profiles; i++) {
         if (!highest || info->profiles[i].priority > highest->priority)
@@ -790,6 +796,9 @@ void AudioService::mm_sourceinfo_cb(pa_context *context, const pa_source_info *i
         needreply = true;
         return;
     }
+    
+    // a reply is already being sent. Don't send another.
+    if(!needreply) return;
 
     if (info->monitor_of_sink != PA_INVALID_INDEX)
         return;  /* Not the right source */
