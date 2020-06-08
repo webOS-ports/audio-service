@@ -57,7 +57,8 @@
                         "com.webos.settingsservice",
                         "com.webos.media",
                         "com.webos.keys",
-                        "org.webosports.luna"]
+                        "org.webosports.luna",
+                        "org.webosports.app.phone-*"]
         },
         {
             "service":"com.palm.audio",
