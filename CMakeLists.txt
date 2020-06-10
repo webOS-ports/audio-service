@@ -26,6 +26,8 @@ webos_component(0 2 0)
 
 webos_add_compiler_flags(ALL -std=c++11)
 
+set( VOICECALL_PROFILE "voicecall" CACHE STRING "Profile to switch to when in voice calls" )
+
 include(FindPkgConfig)
 
 pkg_check_modules(GLIB2 REQUIRED glib-2.0)
@@ -57,6 +59,8 @@ file(GLOB SOURCE_FILES
     src/audioservice.cpp
     src/feedbackeffect.cpp
     src/lunaserviceutils.cpp)
+
+add_compile_definitions(VOICECALL_PROFILE="${VOICECALL_PROFILE}")
 
 webos_add_compiler_flags(ALL -Wall)
 webos_add_linker_options(ALL --no-undefined)

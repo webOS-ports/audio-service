@@ -72,6 +72,10 @@ static LSMethod system_sounds_methods[] = {
     { NULL, NULL }
 };
 
+#ifndef VOICECALL_PROFILE
+#define VOICECALL_PROFILE "voicecall"
+#endif
+
 AudioService::AudioService() :
     handle(0),
     palmHandle(0),
@@ -175,7 +179,7 @@ AudioService::~AudioService()
 
     LSErrorInit(&error);
 
-    if (handle != NULL && LSUnregister(handle, &error) < 0) {
+    if (handle != NULL && !LSUnregister(handle, &error)) {
         g_warning("Could not unregister service: %s", error.message);
         LSErrorFree(&error);
     }
@@ -695,8 +699,13 @@ void AudioService::cm_cardinfo_cb(pa_context *context, const pa_card_info *info,
     for (i = 0; i < info->n_profiles; i++) {
         if (!highest || info->profiles[i].priority > highest->priority)
             highest = &info->profiles[i];
-        if (!strcasecmp(info->profiles[i].name, "voicecall") || !strcasecmp(info->profiles[i].name, "voice call"))
+        if (!strcasecmp(info->profiles[i].name, VOICECALL_PROFILE)) {
             voice_call = &info->profiles[i];
+        }
+        else if (NULL == voice_call && (!strcasecmp(info->profiles[i].name, "voicecall") || !strcasecmp(info->profiles[i].name, "voice call"))) {
+            // fallback
+            voice_call = &info->profiles[i];
+        }
     }
 
     if (!voice_call)
