@@ -13,7 +13,8 @@
                         "com.palm.systemmanager",
                         "com.palm.systemservice",
                         "com.webos.settingsservice",
-                        "org.webosports.luna"]
+                        "org.webosports.luna",
+                        "com.webos.surfacemanager-cardshell"]
         },
         {
             "service":"com.webos.service.audio",
@@ -35,7 +36,8 @@
                         "com.webos.settingsservice",
                         "com.webos.media",
                         "com.webos.keys",
-                        "org.webosports.luna"]
+                        "org.webosports.luna",
+                        "com.webos.surfacemanager-cardshell"]
         },
         {
             "service":"org.webosports.service.audio",
@@ -59,7 +61,8 @@
                         "com.webos.keys",
                         "org.webosports.luna",
                         "org.webosports.app.phone-*",
-                        "org.webosports.app.settings-*"]
+                        "org.webosports.app.settings-*",
+                        "com.webos.surfacemanager-cardshell"]
         },
         {
             "service":"com.palm.audio",
@@ -83,7 +86,8 @@
                         "com.webos.keys",
                         "org.webosports.luna",
                         "org.webosports.app.phone-*",
-                        "org.webosports.app.settings-*"]
+                        "org.webosports.app.settings-*",
+                        "com.webos.surfacemanager-cardshell"]
         }
     ]
 }
