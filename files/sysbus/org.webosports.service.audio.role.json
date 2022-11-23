@@ -1,5 +1,6 @@
 {
     "exeName":"/usr/sbin/audio-service",
+    "trustLevel": "oem",
     "allowedNames": ["org.webosports.service.audio", "com.palm.audio", "com.webos.audio", "com.webos.service.audio"],
     "type": "regular",
     "permissions": [
