@@ -329,7 +329,7 @@
     "com.palm.audio/udev/event",
     "com.webos.service.audio/udev/event",
     "org.webosports.service.audio/udev/event",
-    "org.webosports.service.audio/systemsounds/playFeedback",
+    "org.webosports.service.audio/playFeedback",
     "com.palm.audio/systemsounds/playFeedback",
     "com.webos.audio/systemsounds/playFeedback",
     "com.webos.service.audio/systemsounds/playFeedback"
