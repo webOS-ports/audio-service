@@ -1,43 +1,38 @@
 {
     "com.webos.audio": [
-        "devices",
-        "system",
-        "settings",
-        "media",
-        "tv.services",
-        "applications.query"
+        "settings.query",
+        "settings.management",
+        "bluetooth.query",
+        "physicaldevice.query",
+        "audiooutput.management",
+        "telephony.management",
+        "telephony.query"
     ],
     "com.webos.service.audio": [
-        "devices",
-        "services",
-        "system",
-        "telephony",
-        "settings",
-        "media",
-        "tv.services",
-        "applications.query",
-        "audiooutputd"
+        "settings.query",
+        "settings.management",
+        "bluetooth.query",
+        "physicaldevice.query",
+        "audiooutput.management",
+        "telephony.management",
+        "telephony.query"
     ],
     "com.palm.audio": [
-        "devices",
-        "services",
-        "system",
-        "telephony",
-        "settings",
-        "media",
-        "tv.services",
-        "applications.query",
-        "audiooutputd"
+        "settings.query",
+        "settings.management",
+        "bluetooth.query",
+        "physicaldevice.query",
+        "audiooutput.management",
+        "telephony.management",
+        "telephony.query"
     ],
     "org.webosports.service.audio": [
-        "devices",
-        "services",
-        "system",
-        "telephony",
-        "settings",
-        "media",
-        "tv.services",
-        "applications.query",
-        "audiooutputd"
+        "settings.query",
+        "settings.management",
+        "bluetooth.query",
+        "physicaldevice.query",
+        "audiooutput.management",
+        "telephony.management",
+        "telephony.query"
     ]
 }
