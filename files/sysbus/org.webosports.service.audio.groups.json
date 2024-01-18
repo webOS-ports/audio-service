@@ -1,0 +1,5 @@
+{
+ "allowedNames": ["org.webosports.service.audio", "com.palm.audio", "com.webos.audio", "com.webos.service.audio"],
+ "audio.operation": ["dev"],
+ "audio.management": ["oem"]
+}
